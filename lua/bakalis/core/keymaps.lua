@@ -25,6 +25,8 @@ keymap.set("n", "<leader>tf", "<cmd>tabnew %<CR>", { desc = "Open current buffer
 vim.cmd("set whichwrap+=<,>,h,l")
 local opts = { noremap = true, silent = true }
 
+keymap.set("n", "<C-h>", "<C-w>h", { noremap = true, silent = true })
+
 -- UP arrow
 keymap.set({ "n", "v" }, "<Up>", function()
 	if vim.fn.line(".") == 1 then
