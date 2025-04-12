@@ -6,6 +6,8 @@ keymap.set("n", "<leader>t", function()
 	vim.cmd("split | terminal")
 end, { noremap = true, silent = true, desc = "Open terminal in split" })
 
+keymap.set("n", "<Esc>", "<Cmd>noh<CR><Esc>", { noremap = true, silent = true })
+
 keymap.set("i", "jk", "<ESC>", { desc = "Exit insert mode with jk" })
 
 keymap.set("n", "<leader>nh", ":nohl<CR>", { desc = "Clear search highlights" })
