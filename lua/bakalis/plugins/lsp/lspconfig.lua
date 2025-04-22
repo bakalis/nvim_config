@@ -18,6 +18,12 @@ return {
 
 		local keymap = vim.keymap -- for conciseness
 
+		require("lspconfig").metals.setup({
+			cmd = { "metals" },
+			filetypes = { "scala", "sbt" },
+			root_dir = require("lspconfig").util.root_pattern("build.sbt", "build.sc", ".git"),
+		})
+
 		vim.api.nvim_create_autocmd("LspAttach", {
 			group = vim.api.nvim_create_augroup("UserLspConfig", {}),
 			callback = function(ev)
