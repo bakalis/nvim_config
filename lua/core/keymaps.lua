@@ -92,7 +92,7 @@ end, opts)
 
 vim.keymap.set("n", "k", function()
 	if vim.fn.line(".") == 1 then
-		return "<Esc>0i"
+		return "<Esc>0"
 	else
 		return "k"
 	end
@@ -109,7 +109,7 @@ end, opts)
 
 vim.keymap.set("n", "j", function()
 	if vim.fn.line(".") == vim.fn.line("$") then
-		return "<Esc>$a"
+		return "<Esc>$"
 	else
 		return "j"
 	end
