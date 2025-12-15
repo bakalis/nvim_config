@@ -4,6 +4,7 @@ vim.g.maplocalleader = " "
 
 -- Disable the spacebar key's default behavior in Normal and Visual modes
 vim.keymap.set({ "n", "v" }, "<Space>", "<Nop>", { silent = true })
+vim.keymap.set("n", "<leader>bd", ":bd!<CR>", { noremap = true, silent = true, desc = "Delete buffer (force)" })
 
 -- For conciseness
 local opts = { noremap = true, silent = true }
