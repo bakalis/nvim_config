@@ -114,3 +114,8 @@ vim.keymap.set("i", "j", function()
 		return "j"
 	end
 end, { expr = true })
+
+vim.keymap.set("n", "<leader>gd", function()
+	local gs = require("gitsigns")
+	gs.diffthis() -- opens a diff of current buffer vs HEAD in a split
+end, { noremap = true, silent = true, desc = "Git diff current buffer" })
