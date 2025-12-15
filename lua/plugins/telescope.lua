@@ -22,7 +22,6 @@ return {
 		local telescope = require("telescope")
 		local builtin = require("telescope.builtin")
 		local actions = require("telescope.actions")
-		local action_state = require("telescope.actions.state")
 
 		-- -------------------------------------------------------------------------
 		-- Telescope setup

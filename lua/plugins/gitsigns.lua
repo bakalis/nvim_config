@@ -36,7 +36,7 @@ return {
 			vim.keymap.set("n", "<leader>gd", gs.diffthis, opts)
 			vim.keymap.set("n", "<leader>gD", function()
 				for _, win in ipairs(vim.api.nvim_list_wins()) do
-					if vim.api.nvim_win_get_option(win, "diff") then
+					if vim.wo[win].diff then
 						vim.api.nvim_win_close(win, true)
 					end
 				end
