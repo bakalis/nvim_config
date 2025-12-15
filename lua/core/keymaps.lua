@@ -90,7 +90,7 @@ vim.keymap.set({ "n", "v" }, "k", function()
 	end
 end, opts)
 
-vim.keymap.set("i", "k", function()
+vim.keymap.set("n", "k", function()
 	if vim.fn.line(".") == 1 then
 		return "<Esc>0i"
 	else
@@ -107,7 +107,7 @@ vim.keymap.set({ "n", "v" }, "j", function()
 	end
 end, opts)
 
-vim.keymap.set("i", "j", function()
+vim.keymap.set("n", "j", function()
 	if vim.fn.line(".") == vim.fn.line("$") then
 		return "<Esc>$a"
 	else

@@ -42,18 +42,3 @@ vim.api.nvim_create_autocmd("TextYankPost", {
 	group = highlight_group,
 	pattern = "*",
 })
-
-vim.api.nvim_create_autocmd("FileType", {
-	pattern = "neo-tree-popup",
-	callback = function(event)
-		local buf = event.buf
-		local opts = { buffer = buf, noremap = true, silent = true }
-
-		-- Force insert mode
-		vim.cmd("startinsert")
-
-		-- Override j/k so they insert characters instead of moving
-		vim.keymap.set("i", "j", "j", opts)
-		vim.keymap.set("i", "k", "k", opts)
-	end,
-})
