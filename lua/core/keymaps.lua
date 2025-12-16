@@ -5,6 +5,23 @@ vim.g.maplocalleader = " "
 -- Disable the spacebar key's default behavior in Normal and Visual modes
 vim.keymap.set({ "n", "v" }, "<Space>", "<Nop>", { silent = true })
 
+local function get_buf_list()
+	local bufs = {}
+	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+		if vim.api.nvim_buf_is_loaded(buf) and vim.api.nvim_buf_get_option(buf, "buflisted") then
+			table.insert(bufs, buf)
+		end
+	end
+	return bufs
+end
+
+local function close_buffer(buf, force)
+	local ok, err = pcall(vim.api.nvim_buf_delete, buf, { force = force })
+	if not ok then
+		vim.notify("Failed to close buffer: " .. err, vim.log.levels.WARN)
+	end
+end
+
 vim.keymap.set("n", "<leader>bd", function()
 	local current = vim.api.nvim_get_current_buf()
 	local buffers = vim.fn.getbufinfo({ buflisted = 1 })
@@ -26,6 +43,22 @@ vim.keymap.set("n", "<leader>bd", function()
 	vim.api.nvim_buf_delete(current, { force = false })
 end, { desc = "Delete buffer and go to last buffer" })
 
+-- Close all other buffers
+vim.keymap.set("n", "<leader>bo", function()
+	local cur = vim.api.nvim_get_current_buf()
+	for _, buf in ipairs(get_buf_list()) do
+		if buf ~= cur then
+			vim.api.nvim_buf_delete(buf, { force = true })
+		end
+	end
+end, { desc = "Close all other buffers" })
+
+-- Close all buffers
+vim.keymap.set("n", "<leader>ba", function()
+	for _, buf in ipairs(get_buf_list()) do
+		vim.api.nvim_buf_delete(buf, { force = true })
+	end
+end, { desc = "Close all buffers" })
 -- For conciseness
 local opts = { noremap = true, silent = true }
 
