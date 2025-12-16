@@ -4,7 +4,29 @@ vim.g.maplocalleader = " "
 
 -- Disable the spacebar key's default behavior in Normal and Visual modes
 vim.keymap.set({ "n", "v" }, "<Space>", "<Nop>", { silent = true })
-vim.keymap.set("n", "<leader>bd", ":bd!<CR>", { noremap = true, silent = true, desc = "Delete buffer (force)" })
+
+vim.keymap.set("n", "<leader>bd", function()
+	local current = vim.api.nvim_get_current_buf()
+
+	-- Get list of listed buffers
+	local buffers = vim.fn.getbufinfo({ buflisted = 1 })
+
+	-- Find the most recently used buffer that is not the current one
+	local target = nil
+	for _, buf in ipairs(buffers) do
+		if buf.bufnr ~= current then
+			target = buf.bufnr
+			break
+		end
+	end
+
+	-- Switch first, then delete
+	if target then
+		vim.api.nvim_set_current_buf(target)
+	end
+
+	vim.api.nvim_buf_delete(current, { force = false })
+end, { desc = "Delete buffer and go to last buffer" })
 
 -- For conciseness
 local opts = { noremap = true, silent = true }
