@@ -43,13 +43,40 @@ vim.api.nvim_create_autocmd("TextYankPost", {
 	pattern = "*",
 })
 
+-- Open help in a horizontal split at bottom and adjust width for Neo-tree
 vim.api.nvim_create_autocmd("FileType", {
 	pattern = "help",
 	callback = function(event)
-		local opts = { buffer = event.buf, silent = true }
-		vim.keymap.set("n", "q", "<cmd>quit<cr>", opts)
-		vim.keymap.set("n", "<Esc>", "<cmd>quit<cr>", opts)
+		local buf = event.buf
+		local opts = { buffer = buf, silent = true }
+
+		-- keymaps to quit help
+		vim.keymap.set("n", "q", "<cmd>close<cr>", opts)
+		vim.keymap.set("n", "<Esc>", "<cmd>close<cr>", opts)
+
+		-- no numbers in help
 		vim.wo.number = false
 		vim.wo.relativenumber = false
 	end,
 })
+
+vim.keymap.set("n", "K", function()
+	local word = vim.fn.expand("<cword>")
+
+	-- find Neo-tree width if exists
+	local neo_width = 0
+	for _, w in ipairs(vim.api.nvim_list_wins()) do
+		local b = vim.api.nvim_win_get_buf(w)
+		if vim.bo[b].filetype == "neo-tree" then
+			neo_width = vim.api.nvim_win_get_width(w)
+			break
+		end
+	end
+
+	-- open help in horizontal split directly
+	vim.cmd("belowright help " .. word)
+
+	-- adjust width so it doesn't cover Neo-tree
+	local ok, _ = pcall(vim.api.nvim_win_set_width, 0, vim.o.columns - neo_width)
+	vim.cmd("resize 15") -- set height
+end, { desc = "Open help for word under cursor in horizontal split" })
