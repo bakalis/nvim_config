@@ -7,22 +7,20 @@ vim.keymap.set({ "n", "v" }, "<Space>", "<Nop>", { silent = true })
 
 vim.keymap.set("n", "<leader>bd", function()
 	local current = vim.api.nvim_get_current_buf()
-
-	-- Get list of listed buffers
 	local buffers = vim.fn.getbufinfo({ buflisted = 1 })
 
-	-- Find the most recently used buffer that is not the current one
-	local target = nil
-	for _, buf in ipairs(buffers) do
-		if buf.bufnr ~= current then
-			target = buf.bufnr
-			break
-		end
+	-- If this is the only listed buffer, just delete it
+	if #buffers <= 1 then
+		vim.api.nvim_buf_delete(current, { force = false })
+		return
 	end
 
-	-- Switch first, then delete
-	if target then
-		vim.api.nvim_set_current_buf(target)
+	-- Otherwise, switch to most recently used buffer
+	for _, buf in ipairs(buffers) do
+		if buf.bufnr ~= current then
+			vim.api.nvim_set_current_buf(buf.bufnr)
+			break
+		end
 	end
 
 	vim.api.nvim_buf_delete(current, { force = false })
