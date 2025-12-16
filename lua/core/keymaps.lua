@@ -143,12 +143,27 @@ end, { noremap = true, silent = true, desc = "Git diff current buffer" })
 vim.keymap.set("n", "K", function()
 	local word = vim.fn.expand("<cword>")
 
-	-- Check if help exists
+	-- Check if a help page exists
 	local help_tags = vim.fn.getcompletion(word, "help")
 
 	if #help_tags > 0 then
-		vim.cmd("vert help " .. help_tags[1])
+		-- find Neo-tree width if exists
+		local neo_width = 0
+		for _, w in ipairs(vim.api.nvim_list_wins()) do
+			local b = vim.api.nvim_win_get_buf(w)
+			if vim.bo[b].filetype == "neo-tree" then
+				neo_width = vim.api.nvim_win_get_width(w)
+				break
+			end
+		end
+
+		-- open help in horizontal split at bottom
+		vim.cmd("belowright help " .. help_tags[1])
+
+		-- adjust width so it doesn't cover Neo-tree
+		pcall(vim.api.nvim_win_set_width, 0, vim.o.columns - neo_width)
+		vim.cmd("resize 15") -- optional: fixed height
 	else
 		vim.notify("No help page exists for: " .. word, vim.log.levels.INFO, { title = "Help" })
 	end
-end, { desc = "Open help for word under cursor (safe)" })
+end, { desc = "Open help for word under cursor in horizontal split (safe)" })
