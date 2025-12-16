@@ -121,5 +121,14 @@ vim.keymap.set("n", "<leader>gd", function()
 end, { noremap = true, silent = true, desc = "Git diff current buffer" })
 
 vim.keymap.set("n", "K", function()
-	vim.cmd("help " .. vim.fn.expand("<cword>"))
-end, { desc = "Open help in split below" })
+	local word = vim.fn.expand("<cword>")
+
+	-- Check if help exists
+	local help_tags = vim.fn.getcompletion(word, "help")
+
+	if #help_tags > 0 then
+		vim.cmd("vert help " .. help_tags[1])
+	else
+		vim.notify("No help page exists for: " .. word, vim.log.levels.INFO, { title = "Help" })
+	end
+end, { desc = "Open help for word under cursor (safe)" })
