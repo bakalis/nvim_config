@@ -119,3 +119,7 @@ vim.keymap.set("n", "<leader>gd", function()
 	local gs = require("gitsigns")
 	gs.diffthis() -- opens a diff of current buffer vs HEAD in a split
 end, { noremap = true, silent = true, desc = "Git diff current buffer" })
+
+vim.keymap.set("n", "K", function()
+	vim.cmd("help " .. vim.fn.expand("<cword>"))
+end, { desc = "Open help in split below" })

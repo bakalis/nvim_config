@@ -42,3 +42,14 @@ vim.api.nvim_create_autocmd("TextYankPost", {
 	group = highlight_group,
 	pattern = "*",
 })
+
+vim.api.nvim_create_autocmd("FileType", {
+	pattern = "help",
+	callback = function(event)
+		local opts = { buffer = event.buf, silent = true }
+		vim.keymap.set("n", "q", "<cmd>quit<cr>", opts)
+		vim.keymap.set("n", "<Esc>", "<cmd>quit<cr>", opts)
+		vim.wo.number = false
+		vim.wo.relativenumber = false
+	end,
+})
