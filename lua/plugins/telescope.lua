@@ -67,6 +67,7 @@ return {
 		-- -------------------------------------------------------------------------
 		pcall(telescope.load_extension, "fzf")
 		pcall(telescope.load_extension, "ui-select")
+		pcall(telescope.load_extension, "harpoon")
 
 		-- -------------------------------------------------------------------------
 		-- Standard Telescope keymaps
@@ -81,6 +82,10 @@ return {
 		vim.keymap.set("n", "<leader>sr", builtin.resume, { desc = "[S]earch [R]esume" })
 		vim.keymap.set("n", "<leader>s.", builtin.oldfiles, { desc = "[S]earch Recent Files" })
 		vim.keymap.set("n", "<leader><leader>", builtin.buffers, { desc = "Find existing buffers" })
+
+		vim.keymap.set("n", "<leader>fh", function()
+			require("telescope").extensions.harpoon.marks()
+		end, { desc = "Harpoon via Telescope" })
 
 		vim.keymap.set("n", "<leader>/", function()
 			builtin.current_buffer_fuzzy_find(require("telescope.themes").get_dropdown({

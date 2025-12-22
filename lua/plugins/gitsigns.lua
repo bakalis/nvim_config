@@ -26,11 +26,16 @@ return {
 			vim.keymap.set("n", "[h", gs.prev_hunk, opts)
 
 			-- Preview hunk
-			vim.keymap.set("n", "<leader>hp", gs.preview_hunk, opts)
+			vim.keymap.set("n", "<leader>hp", gs.preview_hunk, vim.tbl_extend("force", opts, { desc = "Preview Hunk" }))
 
 			-- Stage/undo stage hunk
-			vim.keymap.set("n", "<leader>hs", gs.stage_hunk, opts)
-			vim.keymap.set("n", "<leader>hu", gs.undo_stage_hunk, opts)
+			vim.keymap.set("n", "<leader>hs", gs.stage_hunk, vim.tbl_extend("force", opts, { desc = "Stage Hunk" }))
+			vim.keymap.set(
+				"n",
+				"<leader>hu",
+				gs.undo_stage_hunk,
+				vim.tbl_extend("force", opts, { desc = "Undo Stage Hunk" })
+			)
 
 			-- Diff current buffer against HEAD
 			vim.keymap.set("n", "<leader>gd", gs.diffthis, opts)
