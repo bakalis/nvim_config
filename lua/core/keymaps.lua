@@ -5,62 +5,78 @@ vim.g.maplocalleader = " "
 -- Disable the spacebar key's default behavior in Normal and Visual modes
 vim.keymap.set({ "n", "v" }, "<Space>", "<Nop>", { silent = true })
 
-local function get_buf_list()
+-- ---------------------------------------------------------------------
+-- Helpers
+-- ---------------------------------------------------------------------
+
+local function listed_buffers()
 	local bufs = {}
 	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-		if vim.api.nvim_buf_is_loaded(buf) and vim.api.nvim_buf_get_option(buf, "buflisted") then
+		if vim.api.nvim_buf_is_loaded(buf) and vim.api.nvim_get_option_value("buflisted", { buf = buf }) then
 			table.insert(bufs, buf)
 		end
 	end
 	return bufs
 end
 
-local function close_buffer(buf, force)
-	local ok, err = pcall(vim.api.nvim_buf_delete, buf, { force = force })
-	if not ok then
-		vim.notify("Failed to close buffer: " .. err, vim.log.levels.WARN)
-	end
+local function is_modified(buf)
+	return vim.api.nvim_get_option_value("modified", { buf = buf })
 end
 
-vim.keymap.set("n", "<leader>bd", function()
-	local current = vim.api.nvim_get_current_buf()
-	local buffers = vim.fn.getbufinfo({ buflisted = 1 })
+local function confirm_force(msg)
+	return vim.fn.confirm(msg, "&Yes\n&No", 2) == 1
+end
 
-	-- If this is the only listed buffer, just delete it
-	if #buffers <= 1 then
-		vim.api.nvim_buf_delete(current, { force = false })
-		return
+local function goto_alternate_buffer(current)
+	for _, buf in ipairs(listed_buffers()) do
+		if buf ~= current then
+			vim.api.nvim_set_current_buf(buf)
+			return true
+		end
 	end
+	return false
+end
 
-	-- Otherwise, switch to most recently used buffer
-	for _, buf in ipairs(buffers) do
-		if buf.bufnr ~= current then
-			vim.api.nvim_set_current_buf(buf.bufnr)
-			break
+local function delete_buffer(buf)
+	local modified = is_modified(buf)
+
+	if modified then
+		if not confirm_force("Buffer has unsaved changes. Force close?") then
+			return
 		end
 	end
 
-	vim.api.nvim_buf_delete(current, { force = false })
-end, { desc = "Delete buffer and go to last buffer" })
+	-- Switch first if possible
+	goto_alternate_buffer(buf)
 
--- Close all other buffers
+	vim.api.nvim_buf_delete(buf, { force = modified })
+end
+
+-- ---------------------------------------------------------------------
+-- Keymaps
+-- ---------------------------------------------------------------------
+
+-- Delete current buffer (IntelliJ-style)
+vim.keymap.set("n", "<leader>bd", function()
+	delete_buffer(vim.api.nvim_get_current_buf())
+end, { desc = "Delete buffer (confirm if modified)" })
+
+-- Close all other buffers (confirm per modified buffer)
 vim.keymap.set("n", "<leader>bo", function()
 	local cur = vim.api.nvim_get_current_buf()
-	for _, buf in ipairs(get_buf_list()) do
+	for _, buf in ipairs(listed_buffers()) do
 		if buf ~= cur then
-			vim.api.nvim_buf_delete(buf, { force = true })
+			delete_buffer(buf)
 		end
 	end
-end, { desc = "Close all other buffers" })
+end, { desc = "Close other buffers (confirm modified)" })
 
--- Close all buffers
+-- Close all buffers (confirm per modified buffer)
 vim.keymap.set("n", "<leader>ba", function()
-	for _, buf in ipairs(get_buf_list()) do
-		vim.api.nvim_buf_delete(buf, { force = true })
+	for _, buf in ipairs(listed_buffers()) do
+		delete_buffer(buf)
 	end
-end, { desc = "Close all buffers" })
--- For conciseness
-local opts = { noremap = true, silent = true }
+end, { desc = "Close all buffers (confirm modified)" })
 
 -- save file
 vim.keymap.set("n", "<C-s>", "<cmd> w <CR>", opts)
