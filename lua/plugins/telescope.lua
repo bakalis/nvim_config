@@ -83,6 +83,23 @@ return {
 		vim.keymap.set("n", "<leader>s.", builtin.oldfiles, { desc = "[S]earch Recent Files" })
 		vim.keymap.set("n", "<leader><leader>", builtin.buffers, { desc = "Find existing buffers" })
 
+		vim.keymap.set("n", "<leader>sld", builtin.lsp_definitions, { desc = "Telescope LSP Definitions" })
+		vim.keymap.set("n", "<leader>slr", builtin.lsp_references, { desc = "Telescope LSP References" })
+		vim.keymap.set("n", "<leader>sli", builtin.lsp_implementations, { desc = "Telescope LSP Implementations" })
+		vim.keymap.set(
+			"n",
+			"<leader>sls",
+			builtin.lsp_document_symbols,
+			{ desc = "Telescope LSP Symbols (Current Buffer)" }
+		)
+		vim.keymap.set(
+			"n",
+			"<leader>slS",
+			builtin.lsp_dynamic_workspace_symbols,
+			{ desc = "Telescope LSP Workspace Symbols" }
+		)
+		vim.keymap.set("n", "<leader>sle", builtin.diagnostics, { desc = "Telescope LSP Diagnostics" })
+
 		vim.keymap.set("n", "<leader>fh", function()
 			require("telescope").extensions.harpoon.marks()
 		end, { desc = "Harpoon via Telescope" })
