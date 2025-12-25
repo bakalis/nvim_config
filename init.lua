@@ -32,6 +32,7 @@ require("lazy").setup({
 	require("plugins.comment"),
 	require("plugins.conjure"),
 	require("plugins.harpoon"),
+	require("plugins.paredit"),
 })
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
