@@ -78,6 +78,8 @@ vim.keymap.set("n", "<leader>ba", function()
 	end
 end, { desc = "Close all buffers (confirm modified)" })
 
+local opts = { noremap = true, silent = true }
+
 -- save file
 vim.keymap.set("n", "<C-s>", "<cmd> w <CR>", opts)
 
@@ -222,3 +224,4 @@ vim.keymap.set("n", "<leader>k", ":m .-2<CR>==")
 
 vim.keymap.set("v", "<leader>j", ":m '>+1<CR>gv=gv")
 vim.keymap.set("v", "<leader>k", ":m '<-2<CR>gv=gv")
+vim.keymap.set("n", "<Esc>", "<cmd>nohlsearch<CR>")
