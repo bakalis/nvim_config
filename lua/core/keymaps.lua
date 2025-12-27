@@ -3,8 +3,8 @@ vim.g.mapleader = " "
 vim.g.maplocalleader = " "
 
 -- Disable the spacebar key's default behavior in Normal and Visual modes
-vim.keymap.set({ "n", "v" }, "<Space>", "<Nop>", { silent = true })
 
+vim.keymap.set({ "n", "v" }, "<Space>", "<Nop>", { silent = true })
 -- ---------------------------------------------------------------------
 -- Helpers
 -- ---------------------------------------------------------------------
@@ -216,3 +216,9 @@ vim.keymap.set("n", "K", function()
 		vim.notify("No help page exists for: " .. word, vim.log.levels.INFO, { title = "Help" })
 	end
 end, { desc = "Open help for word under cursor in horizontal split (safe)" })
+
+vim.keymap.set("n", "<leader>j", ":m .+1<CR>==")
+vim.keymap.set("n", "<leader>k", ":m .-2<CR>==")
+
+vim.keymap.set("v", "<leader>j", ":m '>+1<CR>gv=gv")
+vim.keymap.set("v", "<leader>k", ":m '<-2<CR>gv=gv")
