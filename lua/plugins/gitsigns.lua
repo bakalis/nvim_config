@@ -43,15 +43,6 @@ return {
 				gs.reset_buffer,
 				vim.tbl_extend("force", opts, { desc = "Revert Buffer" })
 			)
-			-- Diff current buffer against HEAD
-			vim.keymap.set("n", "<leader>gd", gs.diffthis, opts)
-			vim.keymap.set("n", "<leader>gD", function()
-				for _, win in ipairs(vim.api.nvim_list_wins()) do
-					if vim.wo[win].diff then
-						vim.api.nvim_win_close(win, true)
-					end
-				end
-			end, { noremap = true, silent = true })
 		end,
 	},
 }

@@ -28,6 +28,7 @@ require("lazy").setup({
 	require("plugins.gitsigns"),
 	require("plugins.alpha"),
 	require("plugins.indent-blankline"),
+	require("plugins.fugitive"),
 	require("plugins.misc"),
 	require("plugins.comment"),
 	require("plugins.conjure"),
