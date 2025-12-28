@@ -6,7 +6,7 @@ return {
 		local opts = { noremap = true, silent = true }
 
 		-- Git status (like mini lazygit inside Vim)
-		map("n", "<leader>gs", ":Git<CR>", opts)
+		map("n", "<leader>gs", ":Git<CR>", vim.tbl_extend("force", opts, { desc = "Git Status" }))
 
 		-- Diff current file vs HEAD
 		map("n", "<leader>gd", ":Gvdiffsplit<CR>", opts)
@@ -16,6 +16,8 @@ return {
 
 		-- Browse on GitHub (requires vim-rhubarb)
 		map("n", "<leader>go", ":GBrowse<CR>", opts)
+
+		map("n", "<leader>gl", ":G log<CR>", vim.tbl_extend("force", opts, { desc = "Git Log" }))
 
 		-- Open file at last commit
 		map("n", "<leader>gO", ":Gedit HEAD~1:%<CR>", opts)
