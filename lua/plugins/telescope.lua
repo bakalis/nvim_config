@@ -137,6 +137,17 @@ return {
 			})
 		end, { desc = "[S]earch → [R]eplace (confirmable)" })
 
+		vim.keymap.set("n", "<leader>sp", function()
+			local pattern = vim.fn.input("File pattern (glob, e.g. *.py): ")
+			pattern = pattern ~= "" and pattern or "*.*"
+			require("telescope.builtin").live_grep({
+				prompt_title = "Live Grep in " .. pattern,
+				additional_args = function()
+					return { "--glob", pattern }
+				end,
+			})
+		end, { desc = "Search in files matching pattern" })
+
 		-- -------------------------------------------------------------------------
 		-- Optional IntelliJ-like shortcuts (macOS)
 		-- -------------------------------------------------------------------------
