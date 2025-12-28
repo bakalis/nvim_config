@@ -36,7 +36,13 @@ return {
 				gs.undo_stage_hunk,
 				vim.tbl_extend("force", opts, { desc = "Undo Stage Hunk" })
 			)
-
+			vim.keymap.set("n", "<leader>hr", gs.reset_hunk, vim.tbl_extend("force", opts, { desc = "Revert Hunk" }))
+			vim.keymap.set(
+				"n",
+				"<leader>hR",
+				gs.reset_buffer,
+				vim.tbl_extend("force", opts, { desc = "Revert Buffer" })
+			)
 			-- Diff current buffer against HEAD
 			vim.keymap.set("n", "<leader>gd", gs.diffthis, opts)
 			vim.keymap.set("n", "<leader>gD", function()
