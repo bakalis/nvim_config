@@ -23,6 +23,7 @@ require("lazy").setup({
 	require("plugins.telescope"),
 	require("plugins.lsp"),
 	require("plugins.lazygit"),
+	require("plugins.debugger"),
 	require("plugins.autocompletion"),
 	require("plugins.none-ls"),
 	require("plugins.gitsigns"),
