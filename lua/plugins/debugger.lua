@@ -114,5 +114,8 @@ return {
 		map("n", "<leader>dn", dap.goto_, vim.tbl_extend("force", opts, { desc = "DAP Next Breakpoint" }))
 		map("n", "<leader>dr", dap.repl.open, vim.tbl_extend("force", opts, { desc = "DAP REPL" }))
 		map("n", "<leader>du", dapui.toggle, vim.tbl_extend("force", opts, { desc = "DAP UI" }))
+		vim.keymap.set("n", "<space>?", function()
+			require("dapui").eval(nil, { enter = true })
+		end)
 	end,
 }
