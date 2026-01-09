@@ -1,8 +1,8 @@
 return {
 	"neovim/nvim-lspconfig",
 	dependencies = {
-		{ "mason-org/mason.nvim", config = true },
-		"mason-org/mason-lspconfig.nvim",
+		{ "williamboman/mason.nvim", config = true },
+		"williamboman/mason-lspconfig.nvim",
 		"WhoIsSethDaniel/mason-tool-installer.nvim",
 		"hrsh7th/cmp-nvim-lsp",
 
@@ -29,7 +29,6 @@ return {
 				end
 
 				local tb = require("telescope.builtin")
-
 				map("gd", tb.lsp_definitions, "Goto Definition")
 				map("gr", tb.lsp_references, "Find References")
 				map("gI", tb.lsp_implementations, "Goto Implementation")
@@ -47,33 +46,67 @@ return {
 		capabilities = vim.tbl_deep_extend("force", capabilities, require("cmp_nvim_lsp").default_capabilities())
 
 		---------------------------------------------------------------------------
-		-- SERVER OVERRIDES (ONLY WHAT YOU WANT TO CUSTOMIZE)
+		-- HELPER: get python interpreter for venv
+		---------------------------------------------------------------------------
+		local function get_python_path()
+			-- Try $VIRTUAL_ENV
+			local venv = vim.fn.getenv("VIRTUAL_ENV")
+			if venv ~= vim.NIL and vim.fn.isdirectory(venv) == 1 then
+				return venv .. "/bin/python"
+			end
+			-- Try .venv in project root
+			local local_venv = vim.fn.getcwd() .. "/.venv/bin/python"
+			if vim.fn.filereadable(local_venv) == 1 then
+				return local_venv
+			end
+			-- fallback system Python
+			return "/usr/bin/python3"
+		end
+
+		---------------------------------------------------------------------------
+		-- HELPER: auto-install pylsp in venv if missing
+		---------------------------------------------------------------------------
+		local function ensure_pylsp_installed(python)
+			local handle = io.popen(python .. " -m pip show python-lsp-server")
+			local result = handle:read("*a")
+			handle:close()
+			if result == "" then
+				vim.notify("Installing python-lsp-server in venv: " .. python, vim.log.levels.INFO)
+				os.execute(python .. " -m pip install 'python-lsp-server[all]'")
+			end
+		end
+
+		---------------------------------------------------------------------------
+		-- SERVER OVERRIDES
 		---------------------------------------------------------------------------
 		local servers = {
 			rust_analyzer = {
 				settings = {
 					["rust-analyzer"] = {
 						checkOnSave = true,
-						check = {
-							command = "clippy",
-						},
+						check = { command = "clippy" },
 					},
 				},
 			},
 
-			pylsp = {
-				settings = {
-					pylsp = {
-						plugins = {
-							pyflakes = { enabled = false },
-							pycodestyle = { enabled = false },
-							autopep8 = { enabled = false },
-							yapf = { enabled = false },
-							mccabe = { enabled = false },
+			pylsp = (function()
+				local python_path = get_python_path()
+				ensure_pylsp_installed(python_path) -- auto-install if missing
+				return {
+					cmd = { python_path, "-m", "pylsp" },
+					settings = {
+						pylsp = {
+							plugins = {
+								pyflakes = { enabled = false },
+								pycodestyle = { enabled = false },
+								autopep8 = { enabled = false },
+								yapf = { enabled = false },
+								mccabe = { enabled = false },
+							},
 						},
 					},
-				},
-			},
+				}
+			end)(),
 
 			lua_ls = {
 				settings = {
@@ -91,19 +124,15 @@ return {
 		}
 
 		---------------------------------------------------------------------------
-		-- MASON
+		-- MASON SETUP
 		---------------------------------------------------------------------------
 		require("mason").setup()
 
-		-- Install tools (LSPs + formatters)
 		require("mason-tool-installer").setup({
 			ensure_installed = {
-				-- LSPs
 				"rust-analyzer",
 				"lua-language-server",
 				"python-lsp-server",
-
-				-- formatters / tools (NOT LSPs)
 				"stylua",
 			},
 		})
@@ -111,10 +140,9 @@ return {
 		require("mason-lspconfig").setup()
 
 		---------------------------------------------------------------------------
-		-- ENABLE ALL MASON-INSTALLED LSP SERVERS (NEW API)
+		-- ENABLE ALL MASON-INSTALLED LSP SERVERS
 		---------------------------------------------------------------------------
 		local installed_lsps = require("mason-lspconfig").get_installed_servers()
-
 		for _, server in ipairs(installed_lsps) do
 			local cfg = servers[server] or {}
 			cfg.capabilities = vim.tbl_deep_extend("force", {}, capabilities, cfg.capabilities or {})
