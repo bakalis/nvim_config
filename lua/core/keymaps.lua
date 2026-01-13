@@ -219,9 +219,19 @@ vim.keymap.set("n", "K", function()
 	end
 end, { desc = "Open help for word under cursor in horizontal split (safe)" })
 
-vim.keymap.set("n", "<leader>j", ":m .+1<CR>==")
-vim.keymap.set("n", "<leader>k", ":m .-2<CR>==")
+vim.keymap.set("n", "<leader>j", function()
+	local count = vim.v.count1
+	vim.cmd(string.format("m .+%d", count))
+	vim.cmd("normal! ==")
+end, { desc = "Move line down" })
 
-vim.keymap.set("v", "<leader>j", ":m '>+1<CR>gv=gv")
-vim.keymap.set("v", "<leader>k", ":m '<-2<CR>gv=gv")
+vim.keymap.set("n", "<leader>k", function()
+	local count = vim.v.count1
+	vim.cmd(string.format("m .-%d", count + 1))
+	vim.cmd("normal! ==")
+end, { desc = "Move line up" })
+
+vim.keymap.set("v", "<leader>j", ":m'>+<CR>gv=gv", { desc = "Move down" })
+vim.keymap.set("v", "<leader>k", ":m-2<CR>gv=gv", { desc = "Move up" })
+
 vim.keymap.set("n", "<Esc>", "<cmd>nohlsearch<CR>")
