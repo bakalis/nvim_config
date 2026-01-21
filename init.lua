@@ -33,6 +33,7 @@ require("lazy").setup({
 	require("plugins.misc"),
 	require("plugins.comment"),
 	require("plugins.conjure"),
+	require("plugins.neotest"),
 	require("plugins.harpoon"),
 	require("plugins.paredit"),
 })
