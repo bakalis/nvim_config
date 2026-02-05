@@ -147,6 +147,7 @@ return { -- Autocompletion
 				end, { "i", "s" }),
 			}),
 			sources = {
+				{ name = "copilot" },
 				{
 					name = "lazydev",
 					-- set group index to 0 to skip loading LuaLS completions as lazydev recommends it
@@ -162,6 +163,7 @@ return { -- Autocompletion
 				format = function(entry, vim_item)
 					vim_item.kind = string.format("%s", kind_icons[vim_item.kind])
 					vim_item.menu = ({
+						copilot = "[AI]",
 						nvim_lsp = "[LSP]",
 						luasnip = "[Snippet]",
 						buffer = "[Buffer]",

@@ -25,6 +25,7 @@ require("lazy").setup({
 	require("plugins.lazygit"),
 	require("plugins.debugger"),
 	require("plugins.autocompletion"),
+	require("plugins.copilot"),
 	require("plugins.none-ls"),
 	require("plugins.gitsigns"),
 	require("plugins.alpha"),
