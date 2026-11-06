@@ -40,6 +40,7 @@ require("lazy").setup({
 	require("plugins.database"),
 	require("plugins.conjure"),
 	require("plugins.neotest"),
+	require("plugins.java"),
 	require("plugins.harpoon"),
 	require("plugins.paredit"),
 	require("plugins.markdown"),
