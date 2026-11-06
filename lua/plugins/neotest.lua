@@ -5,6 +5,7 @@ return {
 			"nvim-lua/plenary.nvim",
 			"antoinemadec/FixCursorHold.nvim",
 			"nvim-treesitter/nvim-treesitter",
+			"rcasia/neotest-java",
 			"nvim-neotest/neotest-python",
 			"nvim-neotest/neotest-go",
 			"nvim-neotest/neotest-jest",
@@ -15,6 +16,8 @@ return {
 
 			neotest.setup({
 				adapters = {
+					require("neotest-java")({}),
+
 					require("neotest-python")({
 						runner = "pytest",
 					}),
@@ -39,6 +42,14 @@ return {
 			vim.keymap.set("n", "<leader>ta", function()
 				neotest.run.run({ suite = true })
 			end, { desc = "Test: All" })
+
+			vim.keymap.set("n", "<leader>tt", function()
+				neotest.run.run()
+			end, { desc = "Test: Nearest" })
+
+			vim.keymap.set("n", "<leader>td", function()
+				neotest.run.run({ strategy = "dap" })
+			end, { desc = "Test: Debug Nearest" })
 
 			vim.keymap.set("n", "<leader>tl", function()
 				neotest.run.run_last()

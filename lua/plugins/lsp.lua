@@ -138,6 +138,11 @@ return {
 				"checkmake",
 				"ruff",
 				"ormolu",
+				"jdtls",
+				"java-debug-adapter",
+				"java-test",
+				"vscode-spring-boot-tools",
+				"lemminx",
 			},
 		})
 
@@ -148,7 +153,10 @@ return {
 		end
 		vim.lsp.config("*", { capabilities = capabilities })
 
-		require("mason-lspconfig").setup({ automatic_enable = true })
+		require("mason-lspconfig").setup({
+			-- jdtls is started by nvim-jdtls (lua/lang/java.lua), and java_language_server would compete with it
+			automatic_enable = { exclude = { "jdtls", "java_language_server" } },
+		})
 
 		-- Haskell comes from ghcup (the wrapper picks the HLS matching the project's GHC), not mason
 		if require("core.platform").has("haskell-language-server-wrapper") then
