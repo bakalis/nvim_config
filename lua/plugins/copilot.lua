@@ -29,12 +29,4 @@ return {
 			vim.keymap.set("i", "<C-e>", suggestion.dismiss, { desc = "Copilot Dismiss" })
 		end,
 	},
-
-	{
-		"zbirenbaum/copilot-cmp",
-		dependencies = { "zbirenbaum/copilot.lua" },
-		config = function()
-			require("copilot_cmp").setup()
-		end,
-	},
 }

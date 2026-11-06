@@ -1,10 +1,15 @@
 return {
 	"neovim/nvim-lspconfig",
 	dependencies = {
-		{ "williamboman/mason.nvim", config = true },
-		"williamboman/mason-lspconfig.nvim",
+		{ "mason-org/mason.nvim", config = true },
+		"mason-org/mason-lspconfig.nvim",
 		"WhoIsSethDaniel/mason-tool-installer.nvim",
-		"hrsh7th/cmp-nvim-lsp",
+		"saghen/blink.cmp",
+		{
+			"folke/lazydev.nvim",
+			ft = "lua",
+			opts = { library = { { path = "${3rd}/luv/library", words = { "vim%.uv" } } } },
+		},
 
 		{
 			"j-hui/fidget.nvim",
@@ -36,6 +41,14 @@ return {
 				map("<leader>rn", vim.lsp.buf.rename, "Rename")
 				map("<leader>ca", vim.lsp.buf.code_action, "Code Action", { "n", "x" })
 				map("gD", vim.lsp.buf.declaration, "Goto Declaration")
+
+				local client = vim.lsp.get_client_by_id(event.data.client_id)
+				if client and client:supports_method("textDocument/inlayHint") then
+					vim.lsp.inlay_hint.enable(true, { bufnr = event.buf })
+					map("<leader>th", function()
+						vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled({ bufnr = event.buf }), { bufnr = event.buf })
+					end, "Toggle Inlay Hints")
+				end
 			end,
 		})
 
@@ -43,37 +56,21 @@ return {
 		-- CAPABILITIES
 		---------------------------------------------------------------------------
 		local capabilities = vim.lsp.protocol.make_client_capabilities()
-		capabilities = vim.tbl_deep_extend("force", capabilities, require("cmp_nvim_lsp").default_capabilities())
+		capabilities = vim.tbl_deep_extend("force", capabilities, require("blink.cmp").get_lsp_capabilities())
 
 		---------------------------------------------------------------------------
-		-- HELPER: get python interpreter for venv
+		-- HELPER: python interpreter for the current project (venv aware)
 		---------------------------------------------------------------------------
-		local function get_python_path()
-			-- Try $VIRTUAL_ENV
-			local venv = vim.fn.getenv("VIRTUAL_ENV")
-			if venv ~= vim.NIL and vim.fn.isdirectory(venv) == 1 then
+		local function get_python_path(root)
+			local venv = vim.env.VIRTUAL_ENV
+			if venv and vim.fn.isdirectory(venv) == 1 then
 				return venv .. "/bin/python"
 			end
-			-- Try .venv in project root
-			local local_venv = vim.fn.getcwd() .. "/.venv/bin/python"
-			if vim.fn.filereadable(local_venv) == 1 then
+			local local_venv = (root or vim.fn.getcwd()) .. "/.venv/bin/python"
+			if vim.fn.executable(local_venv) == 1 then
 				return local_venv
 			end
-			-- fallback system Python
-			return "/usr/bin/python3"
-		end
-
-		---------------------------------------------------------------------------
-		-- HELPER: auto-install pylsp in venv if missing
-		---------------------------------------------------------------------------
-		local function ensure_pylsp_installed(python)
-			local handle = io.popen(python .. " -m pip show python-lsp-server")
-			local result = handle:read("*a")
-			handle:close()
-			if result == "" then
-				vim.notify("Installing python-lsp-server in venv: " .. python, vim.log.levels.INFO)
-				os.execute(python .. " -m pip install 'python-lsp-server[all]'")
-			end
+			return nil
 		end
 
 		---------------------------------------------------------------------------
@@ -89,34 +86,36 @@ return {
 				},
 			},
 
-			pylsp = (function()
-				local python_path = get_python_path()
-				ensure_pylsp_installed(python_path) -- auto-install if missing
-				return {
-					cmd = { python_path, "-m", "pylsp" },
-					settings = {
-						pylsp = {
-							plugins = {
-								pyflakes = { enabled = false },
-								pycodestyle = { enabled = false },
-								autopep8 = { enabled = false },
-								yapf = { enabled = false },
-								mccabe = { enabled = false },
-							},
+			pylsp = {
+				-- Use the project venv's pylsp when it has one, otherwise mason's pylsp
+				before_init = function(_, config)
+					local python = get_python_path(config.root_dir)
+					if python then
+						vim.fn.system({ python, "-c", "import pylsp" })
+						if vim.v.shell_error == 0 then
+							config.cmd = { python, "-m", "pylsp" }
+						end
+					end
+				end,
+				settings = {
+					pylsp = {
+						plugins = {
+							pyflakes = { enabled = false },
+							pycodestyle = { enabled = false },
+							autopep8 = { enabled = false },
+							yapf = { enabled = false },
+							mccabe = { enabled = false },
 						},
 					},
-				}
-			end)(),
+				},
+			},
 
 			lua_ls = {
 				settings = {
 					Lua = {
 						runtime = { version = "LuaJIT" },
 						diagnostics = { globals = { "vim" } },
-						workspace = {
-							checkThirdParty = false,
-							library = vim.api.nvim_get_runtime_file("", true),
-						},
+						workspace = { checkThirdParty = false },
 						format = { enable = false },
 					},
 				},
@@ -134,21 +133,22 @@ return {
 				"lua-language-server",
 				"python-lsp-server",
 				"stylua",
+				"tree-sitter-cli",
+				"prettier",
+				"eslint_d",
+				"shfmt",
+				"checkmake",
+				"ruff",
 			},
 		})
 
-		require("mason-lspconfig").setup()
-
-		---------------------------------------------------------------------------
-		-- ENABLE ALL MASON-INSTALLED LSP SERVERS
-		---------------------------------------------------------------------------
-		local installed_lsps = require("mason-lspconfig").get_installed_servers()
-		for _, server in ipairs(installed_lsps) do
-			local cfg = servers[server] or {}
+		-- Configure overrides, then let mason-lspconfig enable every installed server
+		for server, cfg in pairs(servers) do
 			cfg.capabilities = vim.tbl_deep_extend("force", {}, capabilities, cfg.capabilities or {})
-
 			vim.lsp.config(server, cfg)
-			vim.lsp.enable(server)
 		end
+		vim.lsp.config("*", { capabilities = capabilities })
+
+		require("mason-lspconfig").setup({ automatic_enable = true })
 	end,
 }

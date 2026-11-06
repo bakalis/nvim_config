@@ -1,8 +1,8 @@
 local M = {}
 
 -- Adapter information
-M.adapters = { "debugpy" }
-M.adapter_name = "debugpy"
+M.adapters = { "python" }
+M.adapter_name = "python"
 
 -- Helper function to find Python interpreter
 local function find_python_interpreter()

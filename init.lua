@@ -26,7 +26,7 @@ require("lazy").setup({
 	require("plugins.debugger"),
 	require("plugins.autocompletion"),
 	require("plugins.copilot"),
-	require("plugins.none-ls"),
+	require("plugins.formatting"),
 	require("plugins.gitsigns"),
 	require("plugins.alpha"),
 	require("plugins.indent-blankline"),
