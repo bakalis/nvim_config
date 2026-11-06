@@ -19,7 +19,14 @@ return {
 			formatters = {
 				shfmt = { prepend_args = { "-i", "4" } },
 			},
-			format_on_save = { timeout_ms = 2000, lsp_format = "fallback" },
+			format_on_save = function(bufnr)
+				-- Java only formats on save with an Eclipse formatter profile (lua/lang/java.lua),
+				-- otherwise jdtls would reformat whole files in its default style
+				if vim.bo[bufnr].filetype == "java" and not vim.b[bufnr].java_format_on_save then
+					return
+				end
+				return { timeout_ms = 2000, lsp_format = "fallback" }
+			end,
 		},
 	},
 	{
