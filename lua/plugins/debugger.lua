@@ -81,14 +81,24 @@ return {
 				},
 				{
 					elements = {
-						{ id = "repl", size = 0.5 },
-						{ id = "console", size = 0.5 },
+						{ id = "repl", size = 1.0 },
 					},
 					size = 10,
 					position = "bottom",
 				},
 			},
 		})
+
+		-- dap-ui makes its single "DAP Console" buffer the terminal of every session, so a
+		-- second running app fails to start (jobstart requires an unmodified buffer).
+		-- Every session gets its own terminal window at the bottom instead.
+		dap.defaults.fallback.terminal_win_cmd = function()
+			local current = vim.api.nvim_get_current_win()
+			vim.cmd("botright 12new")
+			local buf, win = vim.api.nvim_get_current_buf(), vim.api.nvim_get_current_win()
+			vim.api.nvim_set_current_win(current)
+			return buf, win
+		end
 
 		require("nvim-dap-virtual-text").setup({ commented = true })
 
@@ -123,7 +133,11 @@ return {
 		dap.listeners.after.disconnect["stop-terminal-job"] = stop_terminal_job
 
 		-- Auto open/close UI
-		dap.listeners.after.event_initialized["dapui"] = function()
+		dap.listeners.after.event_initialized["dapui"] = function(session)
+			-- plain runs (<leader>Jr, services panel) don't need the debug layout
+			if session.config.noDebug then
+				return
+			end
 			dapui.open()
 		end
 		dap.listeners.before.event_terminated["dapui"] = function()
