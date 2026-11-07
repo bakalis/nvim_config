@@ -16,7 +16,7 @@ return {
 
 			neotest.setup({
 				adapters = {
-					require("neotest-java")({}),
+					require("neotest-java")({}, { binaries = require("lang.java").neotest_binaries() }),
 
 					require("neotest-python")({
 						runner = "pytest",
@@ -40,8 +40,29 @@ return {
 			end, { desc = "Test: File" })
 
 			vim.keymap.set("n", "<leader>ta", function()
-				neotest.run.run({ suite = true })
-			end, { desc = "Test: All" })
+				-- neotest-java can't run a multi-module parent as one suite, so run each
+				-- module that has tests instead ("<name> does not exist" from jdtls)
+				local root = vim.fs.root(0, { "mvnw", "gradlew", ".git" }) or vim.fn.getcwd()
+				local modules = {}
+				for _, build_file in ipairs(vim.fs.find({ "pom.xml", "build.gradle", "build.gradle.kts" }, { path = root, limit = 50 })) do
+					local dir = vim.fs.dirname(build_file)
+					if dir ~= root and vim.fn.isdirectory(dir .. "/src/test") == 1 then
+						modules[dir] = true
+					end
+				end
+				local dirs = vim.tbl_keys(modules)
+				if vim.bo.filetype == "java" and #dirs > 0 then
+					table.sort(dirs)
+					-- one after another, concurrent runs interfere with test discovery
+					require("nio").run(function()
+						for _, dir in ipairs(dirs) do
+							neotest.run.run(dir)
+						end
+					end)
+				else
+					neotest.run.run({ suite = true })
+				end
+			end, { desc = "Test: All (every module)" })
 
 			vim.keymap.set("n", "<leader>tt", function()
 				neotest.run.run()

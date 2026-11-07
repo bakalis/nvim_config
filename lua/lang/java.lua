@@ -124,7 +124,94 @@ local function bundles()
 	return result
 end
 
-local function set_keymaps(bufnr)
+-- Run configurations, IntelliJ style. Saved ones live in <project>/.vscode/launch.json
+-- (type "java", request "launch": mainClass, projectName, args, vmArgs, env, cwd),
+-- discovered main classes are added to the list automatically.
+local function launch_json(root)
+	return root .. "/.vscode/launch.json"
+end
+
+local function launch_configs(root)
+	local ok, configs = pcall(require("dap.ext.vscode").getconfigs, launch_json(root))
+	return ok and configs or {}
+end
+
+local function pick_config(root, title, callback)
+	local configs = vim.deepcopy(launch_configs(root))
+	require("jdtls.dap").fetch_main_configs(nil, function(discovered)
+		vim.list_extend(configs, discovered or {})
+		configs = vim.tbl_filter(function(config)
+			return config.request == "launch"
+		end, configs)
+		if #configs == 0 then
+			vim.notify("No Java run configurations found, create one with <leader>Je", vim.log.levels.WARN)
+			return
+		end
+		vim.ui.select(configs, {
+			prompt = title,
+			format_item = function(config)
+				return config.name
+			end,
+		}, function(config)
+			if config then
+				callback(config)
+			end
+		end)
+	end)
+end
+
+-- Run without the debugger, output still goes to the terminal pane
+local function run_config(root)
+	pick_config(root, "Run configuration", function(config)
+		config.noDebug = true
+		require("dap").run(config)
+	end)
+end
+
+local function edit_configs(root)
+	local path = launch_json(root)
+	if vim.fn.filereadable(path) == 0 then
+		require("jdtls.dap").fetch_main_configs(nil, function(discovered)
+			local entries = {}
+			for _, config in ipairs(discovered or {}) do
+				local class = config.mainClass:match("[^.]+$")
+				table.insert(
+					entries,
+					string.format(
+						[[
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "Run %s",
+      "mainClass": "%s",
+      "projectName": "%s",
+      "args": "",
+      "vmArgs": "",
+      "env": {},
+      "cwd": "${workspaceFolder}"
+    }]],
+						class,
+						config.mainClass,
+						config.projectName or ""
+					)
+				)
+			end
+			vim.fn.mkdir(vim.fs.dirname(path), "p")
+			vim.fn.writefile(
+				vim.split(
+					'{\n  "version": "0.2.0",\n  "configurations": [\n' .. table.concat(entries, ",\n") .. "\n  ]\n}",
+					"\n"
+				),
+				path
+			)
+			vim.cmd.edit(path)
+		end)
+		return
+	end
+	vim.cmd.edit(path)
+end
+
+local function set_keymaps(bufnr, root)
 	local jdtls = require("jdtls")
 	local map = function(mode, keys, func, desc)
 		vim.keymap.set(mode, keys, func, { buffer = bufnr, desc = "Java: " .. desc })
@@ -144,6 +231,18 @@ local function set_keymaps(bufnr)
 	map("x", "<leader>Jm", function()
 		jdtls.extract_method(true)
 	end, "Extract Method")
+	map("n", "<leader>Jd", function()
+		require("dap").continue({ new = true })
+	end, "Debug Configuration")
+	map("n", "<leader>Jr", function()
+		run_config(root)
+	end, "Run Configuration (no debugger)")
+	map("n", "<leader>Jl", function()
+		require("dap").run_last()
+	end, "Rerun Last")
+	map("n", "<leader>Je", function()
+		edit_configs(root)
+	end, "Edit Run Configurations")
 	map("n", "<leader>Jt", jdtls.test_class, "Debug Test Class")
 	map("n", "<leader>Jn", jdtls.test_nearest_method, "Debug Nearest Test")
 	map("n", "<leader>Jg", function()
@@ -171,6 +270,76 @@ local function restart_if_debug_missing()
 		restarted_for_bundles = true
 		vim.notify("jdtls: debug support not loaded on first launch, restarting")
 		require("jdtls.setup").restart()
+	end
+end
+
+-- neotest-java asks jdtls for the JDK of the directory a run starts in. In a multi-module
+-- project "run all" starts in the aggregator pom, which jdtls doesn't import as a Java
+-- project ("<name> does not exist"), so ask a child module instead.
+function M.neotest_binaries()
+	local cache = {}
+
+	local function java_home(cwd)
+		local dir = cwd:to_string()
+		if cache[dir] then
+			return cache[dir]
+		end
+
+		local nio = require("nio")
+		local client = vim.lsp.get_clients({ name = "jdtls" })[1]
+		local dirs = { dir }
+		for _, pom in ipairs(vim.fs.find("pom.xml", { path = dir, limit = 20 })) do
+			table.insert(dirs, vim.fs.dirname(pom))
+		end
+		for _, dir_candidate in ipairs(client and dirs or {}) do
+			local future = nio.control.future()
+			vim.schedule(function()
+				client:request("workspace/executeCommand", {
+					command = "java.project.getSettings",
+					arguments = { vim.uri_from_fname(dir_candidate), { "org.eclipse.jdt.ls.core.vm.location" } },
+				}, function(err, res)
+					future.set(not err and res and res["org.eclipse.jdt.ls.core.vm.location"] or false)
+				end)
+			end)
+			local home = future.wait()
+			if home then
+				cache[dir] = home
+				return home
+			end
+		end
+
+		M.ensure_java_home()
+		cache[dir] = vim.env.JAVA_HOME
+		return cache[dir]
+	end
+
+	local Path = require("neotest-java.model.path")
+	return {
+		java = function(cwd)
+			return Path(java_home(cwd)):append("bin/java")
+		end,
+		javap = function(cwd)
+			return Path(java_home(cwd)):append("bin/javap")
+		end,
+	}
+end
+
+local root_provider_added = false
+local function add_root_launch_provider()
+	if root_provider_added then
+		return
+	end
+	root_provider_added = true
+	require("dap").providers.configs["java.launch.json"] = function(bufnr)
+		if vim.bo[bufnr].filetype ~= "java" then
+			return {}
+		end
+		local root = find_root(vim.api.nvim_buf_get_name(bufnr))
+		-- nvim-dap already reads <cwd>/.vscode/launch.json itself
+		if root == vim.fn.getcwd() then
+			return {}
+		end
+		return launch_configs(root)
 	end
 end
 
@@ -214,6 +383,7 @@ function M.attach()
 	end
 	M.ensure_java_home()
 	add_attach_config()
+	add_root_launch_provider()
 
 	local root = find_root(file)
 	local workspace = string.format(
@@ -245,7 +415,7 @@ function M.attach()
 			extendedClientCapabilities = extended_capabilities,
 		},
 		on_attach = function(_, buf)
-			set_keymaps(buf)
+			set_keymaps(buf, root)
 			-- jdtls lets the editor's indent options override the profile in format requests
 			vim.b[buf].java_format_on_save = format_settings ~= nil
 			if indent and indent.size then
