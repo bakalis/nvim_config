@@ -113,6 +113,62 @@ local function resolve_in_result(tabpage, choice)
 	require("codediff.ui.refresh").refresh_result_now(session.result_bufnr)
 end
 
+-- Finish or leave a merge view without quitting Neovim. Views started by `git mergetool` are
+-- left alone: those have to exit Neovim so that git can continue.
+local function current_merge()
+	local tabpage = vim.api.nvim_get_current_tabpage()
+	local session = require("codediff.ui.lifecycle").get_session(tabpage)
+	if not (session and session.result_bufnr and session.conflict_blocks) then
+		vim.notify("Not in a merge view", vim.log.levels.WARN)
+		return
+	end
+	return tabpage, session
+end
+
+local function merge_close()
+	local tabpage = current_merge()
+	if tabpage then
+		require("codediff.ui.lifecycle").close(tabpage)
+	end
+end
+
+-- Like IntelliJ's "Apply": write the result, mark the file resolved (git add) and close the view
+local function merge_apply()
+	local tabpage, session = current_merge()
+	if not tabpage then
+		return
+	end
+
+	local tracking = require("codediff.ui.conflict.tracking")
+	local unresolved = 0
+	for _, block in ipairs(session.conflict_blocks) do
+		if tracking.is_block_active(session, block) then
+			unresolved = unresolved + 1
+		end
+	end
+	if unresolved > 0 then
+		local choice = vim.fn.confirm(unresolved .. " conflict(s) not resolved yet. Save the result anyway?", "&Yes\n&No", 2)
+		if choice ~= 1 then
+			return
+		end
+	end
+
+	local file = vim.api.nvim_buf_get_name(session.result_bufnr)
+	vim.api.nvim_buf_call(session.result_bufnr, function()
+		vim.cmd("silent write")
+	end)
+	if unresolved == 0 then
+		local root = vim.fs.root(file, ".git") or vim.fn.getcwd()
+		local result = vim.system({ "git", "-C", root, "add", "--", file }, { text = true }):wait()
+		if result.code ~= 0 then
+			vim.notify("git add failed: " .. vim.trim(result.stderr or ""), vim.log.levels.ERROR)
+		end
+	end
+	local name = vim.fn.fnamemodify(file, ":t")
+	require("codediff.ui.lifecycle").close(tabpage)
+	vim.notify(unresolved == 0 and (name .. " resolved and staged") or (name .. " saved with unresolved conflicts"))
+end
+
 local function attach_result_keys(tabpage, tries)
 	local session = require("codediff.ui.lifecycle").get_session(tabpage)
 	local buf = session and session.result_bufnr
@@ -135,19 +191,32 @@ local function attach_result_keys(tabpage, tries)
 			resolve_in_result(tabpage, choice)
 		end, { buffer = buf, silent = true, nowait = true, desc = desc })
 	end
+	-- finish keys on all three panes
+	for _, pane in ipairs({ session.original_bufnr, session.modified_bufnr, buf }) do
+		if pane and vim.api.nvim_buf_is_valid(pane) then
+			vim.keymap.set("n", "<leader>ma", merge_apply, { buffer = pane, silent = true, desc = "Merge: apply (save, stage, close)" })
+			vim.keymap.set("n", "<leader>mc", merge_close, { buffer = pane, silent = true, desc = "Merge: close view" })
+		end
+	end
 	map("<leader>co", "ours", "Accept ours (left) into result")
 	map("<leader>ct", "theirs", "Accept theirs (right) into result")
 	map("<leader>cb", "both", "Accept both into result")
 	map("<leader>cx", "base", "Discard both, keep base")
-	result_keys[tabpage] = buf
+	result_keys[tabpage] = { buf, session.original_bufnr, session.modified_bufnr }
 end
 
 local function detach_result_keys(tabpage)
-	local buf = result_keys[tabpage]
+	local bufs = result_keys[tabpage]
 	result_keys[tabpage] = nil
-	if buf and vim.api.nvim_buf_is_valid(buf) then
-		for _, lhs in ipairs({ "<leader>co", "<leader>ct", "<leader>cb", "<leader>cx" }) do
-			pcall(vim.keymap.del, "n", lhs, { buffer = buf })
+	for index, buf in ipairs(bufs or {}) do
+		if buf and vim.api.nvim_buf_is_valid(buf) then
+			local keys = { "<leader>ma", "<leader>mc" }
+			if index == 1 then
+				vim.list_extend(keys, { "<leader>co", "<leader>ct", "<leader>cb", "<leader>cx" })
+			end
+			for _, lhs in ipairs(keys) do
+				pcall(vim.keymap.del, "n", lhs, { buffer = buf })
+			end
 		end
 	end
 end
@@ -189,6 +258,8 @@ return {
 		cmd = "CodeDiff",
 		config = function(_, opts)
 			require("codediff").setup(opts)
+			vim.api.nvim_create_user_command("MergeApply", merge_apply, { desc = "Save the merge result, git add it and close the merge view" })
+			vim.api.nvim_create_user_command("MergeClose", merge_close, { desc = "Close the merge view without quitting Neovim" })
 			vim.api.nvim_create_autocmd("User", {
 				group = vim.api.nvim_create_augroup("codediff-branch-titles", { clear = true }),
 				pattern = "CodeDiffOpen",
