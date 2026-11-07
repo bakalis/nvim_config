@@ -1,5 +1,6 @@
 require("core.options") -- Load general options
 require("core.keymaps") -- Load general keymaps
+require("core.diff_highlights") -- IntelliJ style diff colors
 require("core.snippets") -- Custom code snippets
 
 -- Set up the Lazy plugin manager
@@ -31,6 +32,7 @@ require("lazy").setup({
 	require("plugins.alpha"),
 	require("plugins.indent-blankline"),
 	require("plugins.fugitive"),
+	require("plugins.flog"),
 	require("plugins.merge"),
 	require("plugins.misc"),
 	require("plugins.comment"),

@@ -299,6 +299,10 @@ return {
 				end,
 				desc = "Merge: Resolve Conflicted Files",
 			},
+			-- Changes view (working tree, like IntelliJ's commit window); the same key closes it again
+			{ "<leader>gv", "<cmd>CodeDiff<cr>", desc = "Diff: Changed Files" },
+			{ "<leader>gh", "<cmd>CodeDiff history %<cr>", desc = "Diff: History of Current File" },
+			{ "<leader>gH", "<cmd>CodeDiff history<cr>", desc = "Diff: Repository History" },
 			{
 				"<leader>gM",
 				function()
