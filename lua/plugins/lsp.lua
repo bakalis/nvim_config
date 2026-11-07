@@ -139,6 +139,7 @@ return {
 				"shfmt",
 				"checkmake",
 				"ruff",
+				"ormolu",
 			},
 		})
 
@@ -150,5 +151,10 @@ return {
 		vim.lsp.config("*", { capabilities = capabilities })
 
 		require("mason-lspconfig").setup({ automatic_enable = true })
+
+		-- Haskell comes from ghcup (the wrapper picks the HLS matching the project's GHC), not mason
+		if vim.fn.executable("haskell-language-server-wrapper") == 1 then
+			vim.lsp.enable("hls")
+		end
 	end,
 }

@@ -10,6 +10,7 @@ return {
 				sh = { "shfmt" },
 				bash = { "shfmt" },
 				terraform = { "terraform_fmt" },
+				haskell = { "ormolu" },
 				html = { "prettier" },
 				json = { "prettier" },
 				yaml = { "prettier" },
