@@ -33,6 +33,7 @@ require("lazy").setup({
 	require("plugins.fugitive"),
 	require("plugins.misc"),
 	require("plugins.comment"),
+	require("plugins.database"),
 	require("plugins.conjure"),
 	require("plugins.neotest"),
 	require("plugins.harpoon"),

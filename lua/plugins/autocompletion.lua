@@ -32,7 +32,14 @@ return { -- Autocompletion
 		snippets = { preset = "default" },
 		sources = {
 			default = { "lsp", "path", "snippets", "buffer", "copilot" },
+			-- table and column names from the connection selected in the database UI
+			per_filetype = {
+				sql = { "snippets", "dadbod", "buffer" },
+				mysql = { "snippets", "dadbod", "buffer" },
+				plsql = { "snippets", "dadbod", "buffer" },
+			},
 			providers = {
+				dadbod = { name = "Dadbod", module = "vim_dadbod_completion.blink" },
 				copilot = {
 					name = "copilot",
 					module = "blink-cmp-copilot",

@@ -110,6 +110,14 @@ return {
 				},
 			},
 
+			-- Its style linter flags every half-typed query ("reserved word must be uppercase",
+			-- "linebreak required after select"), so keep the server but drop its diagnostics
+			sqlls = {
+				handlers = {
+					["textDocument/publishDiagnostics"] = function() end,
+				},
+			},
+
 			lua_ls = {
 				settings = {
 					Lua = {
