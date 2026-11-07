@@ -4,6 +4,15 @@ return {
 		"mfussenegger/nvim-jdtls",
 		lazy = true,
 		dependencies = { "mfussenegger/nvim-dap" },
+		keys = {
+			{
+				"<leader>Jp",
+				function()
+					require("lang.services").toggle()
+				end,
+				desc = "Java: Services Panel",
+			},
+		},
 	},
 	{
 		-- Spring Boot language server: beans, endpoints, application.yml completion

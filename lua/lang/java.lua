@@ -136,13 +136,38 @@ local function launch_configs(root)
 	return ok and configs or {}
 end
 
-local function pick_config(root, title, callback)
+-- Saved configurations first, then discovered main classes that no saved one covers
+local function project_configs(root, callback)
 	local configs = vim.deepcopy(launch_configs(root))
-	require("jdtls.dap").fetch_main_configs(nil, function(discovered)
-		vim.list_extend(configs, discovered or {})
-		configs = vim.tbl_filter(function(config)
+	local done = false
+	local function finish(discovered)
+		if done then
+			return
+		end
+		done = true
+		local covered = {}
+		for _, config in ipairs(configs) do
+			covered[config.mainClass or ""] = true
+		end
+		for _, config in ipairs(discovered or {}) do
+			if not covered[config.mainClass] then
+				table.insert(configs, config)
+			end
+		end
+		callback(vim.tbl_filter(function(config)
 			return config.request == "launch"
-		end, configs)
+		end, configs))
+	end
+	-- jdtls may be missing or still importing, don't wait forever
+	vim.defer_fn(finish, 4000)
+	local ok = pcall(require("jdtls.dap").fetch_main_configs, nil, finish)
+	if not ok then
+		finish()
+	end
+end
+
+local function pick_config(root, title, callback)
+	project_configs(root, function(configs)
 		if #configs == 0 then
 			vim.notify("No Java run configurations found, create one with <leader>Je", vim.log.levels.WARN)
 			return
@@ -342,6 +367,11 @@ local function add_root_launch_provider()
 		return launch_configs(root)
 	end
 end
+
+M.find_root = find_root
+M.launch_configs = launch_configs
+M.project_configs = project_configs
+M.edit_configs = edit_configs
 
 local attach_config_added = false
 local function add_attach_config()
