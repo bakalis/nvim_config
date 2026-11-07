@@ -92,6 +92,36 @@ return {
 
 		require("nvim-dap-virtual-text").setup({ commented = true })
 
+		-- nvim-dap reuses the terminal buffer of a finished session, and on Neovim 0.12 that
+		-- fails ("jobstart(...,{term=true}) requires unmodified buffer") once the previous
+		-- app was stopped. Wipe finished debug terminals before a new session starts.
+		dap.listeners.on_config["wipe-finished-terminals"] = function(config)
+			for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+				if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].buftype == "terminal" and vim.b[buf]["dap-type"] then
+					local job = vim.b[buf].terminal_job_id
+					if not job or vim.fn.jobwait({ job }, 0)[1] ~= -1 then
+						pcall(vim.api.nvim_buf_delete, buf, { force = true })
+					end
+				end
+			end
+			return config
+		end
+
+		-- Stopping a session must also stop the app: it runs in a terminal job that the
+		-- debug adapter can't kill, so it kept running (and holding its port) after "stop"
+		local function stop_terminal_job(session)
+			local buf = session and session.term_buf
+			if buf and vim.api.nvim_buf_is_valid(buf) then
+				local job = vim.b[buf].terminal_job_id
+				if job then
+					pcall(vim.fn.jobstop, job)
+				end
+			end
+		end
+		dap.listeners.after.event_terminated["stop-terminal-job"] = stop_terminal_job
+		dap.listeners.after.event_exited["stop-terminal-job"] = stop_terminal_job
+		dap.listeners.after.disconnect["stop-terminal-job"] = stop_terminal_job
+
 		-- Auto open/close UI
 		dap.listeners.after.event_initialized["dapui"] = function()
 			dapui.open()
@@ -102,6 +132,25 @@ return {
 		dap.listeners.before.event_exited["dapui"] = function()
 			dapui.close()
 		end
+
+		-- Breakpoint signs, independent of the colorscheme (re-applied when it changes)
+		local function define_dap_highlights()
+			vim.api.nvim_set_hl(0, "DapBreakpoint", { fg = "#f92672" })
+			vim.api.nvim_set_hl(0, "DapBreakpointCondition", { fg = "#e6db74" })
+			vim.api.nvim_set_hl(0, "DapLogPoint", { fg = "#ae81ff" })
+			vim.api.nvim_set_hl(0, "DapStopped", { fg = "#66d9ef", bold = true })
+			vim.api.nvim_set_hl(0, "DapStoppedLine", { bg = "#2d344a" })
+		end
+		define_dap_highlights()
+		vim.api.nvim_create_autocmd("ColorScheme", {
+			group = vim.api.nvim_create_augroup("dap-highlights", { clear = true }),
+			callback = define_dap_highlights,
+		})
+
+		vim.fn.sign_define("DapBreakpoint", { text = "●", texthl = "DapBreakpoint" })
+		vim.fn.sign_define("DapBreakpointCondition", { text = "◆", texthl = "DapBreakpointCondition" })
+		vim.fn.sign_define("DapLogPoint", { text = "◆", texthl = "DapLogPoint" })
+		vim.fn.sign_define("DapStopped", { text = "▶", texthl = "DapStopped", linehl = "DapStoppedLine" })
 
 		-- Keymaps
 		local map = vim.keymap.set
