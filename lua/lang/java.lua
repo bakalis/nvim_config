@@ -7,8 +7,8 @@ local function runner_jdk()
 	return platform.runner_jdk(25)
 end
 
-local function runtimes()
-	return platform.java_runtimes()
+local function runtimes(preferred)
+	return platform.java_runtimes(preferred)
 end
 
 -- Maven (and anything else started from here) should use the JDK of the `java` on the PATH
@@ -361,11 +361,13 @@ function M.attach()
 		vim.notify("jdtls is not installed yet, see :Mason", vim.log.levels.WARN)
 		return
 	end
-	M.ensure_java_home()
 	add_attach_config()
 	add_root_launch_provider()
+	require("lang.spring").setup_dap() -- Run/Debug get the chosen Spring profiles
 
 	local root = find_root(file)
+	-- JAVA_HOME and the language server's default runtime follow the project's JDK (<leader>Jj)
+	local project_jdk = require("lang.jdk").apply(root)
 	local workspace = platform.jdtls_workspace(root)
 
 	local jdtls = require("jdtls")
@@ -410,7 +412,7 @@ function M.attach()
 		settings = {
 			java = {
 				configuration = {
-					runtimes = runtimes(),
+					runtimes = runtimes(project_jdk and project_jdk.path),
 					updateBuildConfiguration = "interactive",
 				},
 				format = { enabled = true, settings = format_settings },

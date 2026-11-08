@@ -53,7 +53,44 @@ return {
         lualine_a = { mode },
         lualine_b = { 'branch' },
         lualine_c = { filename },
-        lualine_x = { diagnostics, diff, { 'encoding', cond = hide_in_width }, { 'filetype', cond = hide_in_width } },
+        lualine_x = {
+          diagnostics,
+          diff,
+          -- project JDK in Java buffers (lang/jdk.lua)
+          {
+            function()
+              local ok, jdk = pcall(require, 'lang.jdk')
+              return ok and jdk.statusline() or ''
+            end,
+            cond = function()
+              return vim.bo.filetype == 'java'
+            end,
+          },
+          -- Maven skip tests mode (lang/maven.lua)
+          {
+            function()
+              local ok, maven = pcall(require, 'lang.maven')
+              return ok and maven.statusline() or ''
+            end,
+            cond = function()
+              return vim.bo.filetype == 'java'
+            end,
+            color = { fg = '#e5c07b' },
+          },
+          -- chosen Spring profiles (lang/spring.lua)
+          {
+            function()
+              local ok, spring = pcall(require, 'lang.spring')
+              return ok and spring.statusline() or ''
+            end,
+            cond = function()
+              return vim.bo.filetype == 'java'
+            end,
+            color = { fg = '#98c379' },
+          },
+          { 'encoding', cond = hide_in_width },
+          { 'filetype', cond = hide_in_width },
+        },
         lualine_y = { 'location' },
         lualine_z = { 'progress' },
       },
