@@ -14,7 +14,7 @@ return {
 			local ts = require("nvim-treesitter")
 			ts.setup()
 			-- Needs the `tree-sitter` CLI (installed through mason-tool-installer in lsp.lua)
-			if vim.fn.executable("tree-sitter") == 1 then
+			if require("core.platform").has("tree-sitter") then
 				ts.install(parsers)
 			end
 
@@ -32,7 +32,7 @@ return {
 					if not installed and not vim.list_contains(ts.get_available(), lang) then
 						return -- no parser exists for this filetype (neo-tree, fidget, ...)
 					end
-					if vim.fn.executable("tree-sitter") == 1 and not installed then
+					if require("core.platform").has("tree-sitter") and not installed then
 						ts.install({ lang }):await(function()
 							if vim.api.nvim_buf_is_valid(ev.buf) then
 								pcall(vim.treesitter.start, ev.buf, lang)

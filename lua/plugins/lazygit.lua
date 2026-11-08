@@ -16,4 +16,7 @@ return {
 	keys = {
 		{ "<leader>lg", "<cmd>LazyGit<cr>", desc = "Open lazy git" },
 	},
+	init = function()
+		require("core.platform").use_lazygit_config()
+	end,
 }

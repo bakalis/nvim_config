@@ -7,9 +7,9 @@ return {
 
 		{
 			"nvim-telescope/telescope-fzf-native.nvim",
-			build = "make",
+			build = require("core.platform").fzf_native_build(),
 			cond = function()
-				return vim.fn.executable("make") == 1
+				return require("core.platform").fzf_native_build() ~= nil
 			end,
 		},
 

@@ -12,7 +12,8 @@ function M.run()
 	end
 	local is_dir = vim.fn.isdirectory(right) == 1
 	-- git passes directories with a trailing slash, codediff rejects those
-	left, right = left:gsub("/+$", ""), right:gsub("/+$", "")
+	local platform = require("core.platform")
+	left, right = platform.strip_trailing_separator(left), platform.strip_trailing_separator(right)
 	vim.cmd(string.format(
 		"CodeDiff --exit-on-close %s %s %s",
 		is_dir and "dir" or "file",

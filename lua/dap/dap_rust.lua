@@ -5,6 +5,8 @@ M.adapters = { "codelldb" }
 M.adapter_name = "codelldb"
 
 -- Helper function to find Rust workspace root
+local platform = require("core.platform")
+
 local function find_rust_workspace()
 	local current_file = vim.fn.expand("%:p:h")
 	local root = vim.fn.findfile("Cargo.toml", current_file .. ";")
@@ -17,7 +19,7 @@ end
 -- Helper function to get Rust binary name from Cargo.toml
 local function get_rust_binary()
 	local workspace = find_rust_workspace()
-	local cargo_toml = workspace .. "/Cargo.toml"
+	local cargo_toml = platform.join(workspace, "Cargo.toml")
 
 	if vim.fn.filereadable(cargo_toml) == 0 then
 		vim.notify("Cargo.toml not found", vim.log.levels.ERROR)
@@ -40,9 +42,9 @@ local function get_rust_binary()
 		return nil
 	end
 
-	local bin_dir = workspace .. "/src/bin"
+	local bin_dir = platform.join(workspace, "src", "bin")
 	if vim.fn.isdirectory(bin_dir) == 1 then
-		local binaries = vim.fn.glob(bin_dir .. "/*.rs", false, true)
+		local binaries = vim.fn.glob(platform.join(bin_dir, "*.rs"), false, true)
 		if #binaries > 1 then
 			local choices = {}
 			for _, bin_path in ipairs(binaries) do
@@ -61,7 +63,7 @@ local function get_rust_binary()
 		end
 	end
 
-	return workspace .. "/target/debug/" .. package_name
+	return platform.join(workspace, "target", "debug", platform.exe_name(package_name))
 end
 
 -- Helper function to build Rust project
@@ -69,11 +71,10 @@ local function build_rust_project()
 	local workspace = find_rust_workspace()
 	vim.notify("Building Rust project...", vim.log.levels.INFO)
 
-	local build_cmd = string.format("cd %s && cargo build 2>&1", workspace)
-	local output = vim.fn.system(build_cmd)
+	local result = platform.system({ "cargo", "build" }, { cwd = workspace })
 
-	if vim.v.shell_error ~= 0 then
-		vim.notify("Build failed:\n" .. output, vim.log.levels.ERROR)
+	if result.code ~= 0 then
+		vim.notify("Build failed:\n" .. result.stdout .. result.stderr, vim.log.levels.ERROR)
 		return false
 	end
 
@@ -132,10 +133,11 @@ M.setup_handler = function(dap)
 			program = function()
 				local workspace = find_rust_workspace()
 				vim.notify("Building tests...", vim.log.levels.INFO)
-				local build_cmd = string.format("cd %s && cargo test --no-run 2>&1", workspace)
-				local output = vim.fn.system(build_cmd)
+				local result = platform.system({ "cargo", "test", "--no-run" }, { cwd = workspace })
+				-- cargo reports the test executable on stderr
+				local output = result.stdout .. result.stderr
 
-				if vim.v.shell_error ~= 0 then
+				if result.code ~= 0 then
 					vim.notify("Test build failed:\n" .. output, vim.log.levels.ERROR)
 					return nil
 				end
@@ -164,7 +166,7 @@ M.setup_handler = function(dap)
 			type = "codelldb",
 			request = "launch",
 			program = function()
-				return vim.fn.input("Path to executable: ", vim.fn.getcwd() .. "/target/debug/", "file")
+				return vim.fn.input("Path to executable: ", platform.join(vim.fn.getcwd(), "target", "debug", ""), "file")
 			end,
 			cwd = "${workspaceFolder}",
 			stopOnEntry = false,

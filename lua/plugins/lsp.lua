@@ -61,17 +61,8 @@ return {
 		---------------------------------------------------------------------------
 		-- HELPER: python interpreter for the current project (venv aware)
 		---------------------------------------------------------------------------
-		local function get_python_path(root)
-			local venv = vim.env.VIRTUAL_ENV
-			if venv and vim.fn.isdirectory(venv) == 1 then
-				return venv .. "/bin/python"
-			end
-			local local_venv = (root or vim.fn.getcwd()) .. "/.venv/bin/python"
-			if vim.fn.executable(local_venv) == 1 then
-				return local_venv
-			end
-			return nil
-		end
+		local platform = require("core.platform")
+		local get_python_path = platform.project_python
 
 		---------------------------------------------------------------------------
 		-- SERVER OVERRIDES
@@ -91,8 +82,7 @@ return {
 				before_init = function(_, config)
 					local python = get_python_path(config.root_dir)
 					if python then
-						vim.fn.system({ python, "-c", "import pylsp" })
-						if vim.v.shell_error == 0 then
+						if platform.system({ python, "-c", "import pylsp" }).code == 0 then
 							config.cmd = { python, "-m", "pylsp" }
 						end
 					end
@@ -161,7 +151,7 @@ return {
 		require("mason-lspconfig").setup({ automatic_enable = true })
 
 		-- Haskell comes from ghcup (the wrapper picks the HLS matching the project's GHC), not mason
-		if vim.fn.executable("haskell-language-server-wrapper") == 1 then
+		if require("core.platform").has("haskell-language-server-wrapper") then
 			vim.lsp.enable("hls")
 		end
 	end,

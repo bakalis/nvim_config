@@ -4,30 +4,11 @@ local M = {}
 M.adapters = { "python" }
 M.adapter_name = "python"
 
--- Helper function to find Python interpreter
+local platform = require("core.platform")
+
+-- Helper function to find Python interpreter (project virtualenv, else the python on the PATH)
 local function find_python_interpreter()
-	-- Check for virtual environment
-	local venv_paths = {
-		vim.fn.getcwd() .. "/venv/bin/python",
-		vim.fn.getcwd() .. "/.venv/bin/python",
-		vim.fn.getcwd() .. "/env/bin/python",
-		vim.env.VIRTUAL_ENV and (vim.env.VIRTUAL_ENV .. "/bin/python"),
-	}
-
-	for _, path in ipairs(venv_paths) do
-		if path and vim.fn.executable(path) == 1 then
-			return path
-		end
-	end
-
-	-- Fall back to system python
-	if vim.fn.executable("python3") == 1 then
-		return "python3"
-	elseif vim.fn.executable("python") == 1 then
-		return "python"
-	end
-
-	return nil
+	return platform.python(vim.fn.getcwd())
 end
 
 -- Setup handler for Python configurations
@@ -45,7 +26,7 @@ M.setup_handler = function(dap)
 					return python
 				else
 					vim.notify("Python interpreter not found", vim.log.levels.ERROR)
-					return "python3"
+					return platform.system_python() or "python"
 				end
 			end,
 			console = "integratedTerminal",
@@ -62,10 +43,10 @@ M.setup_handler = function(dap)
 			type = "debugpy",
 			request = "launch",
 			program = function()
-				return vim.fn.input("Path to Python file: ", vim.fn.getcwd() .. "/", "file")
+				return vim.fn.input("Path to Python file: ", platform.join(vim.fn.getcwd(), ""), "file")
 			end,
 			pythonPath = function()
-				return find_python_interpreter() or "python3"
+				return find_python_interpreter() or "python"
 			end,
 			console = "integratedTerminal",
 			args = function()
@@ -85,7 +66,7 @@ M.setup_handler = function(dap)
 			end,
 			args = { "runserver", "--noreload" },
 			pythonPath = function()
-				return find_python_interpreter() or "python3"
+				return find_python_interpreter() or "python"
 			end,
 			console = "integratedTerminal",
 			django = true,
@@ -103,7 +84,7 @@ M.setup_handler = function(dap)
 			},
 			args = { "run", "--no-debugger", "--no-reload" },
 			pythonPath = function()
-				return find_python_interpreter() or "python3"
+				return find_python_interpreter() or "python"
 			end,
 			console = "integratedTerminal",
 			jinja = true,
@@ -115,7 +96,7 @@ M.setup_handler = function(dap)
 			module = "pytest",
 			args = { "${file}", "-v" },
 			pythonPath = function()
-				return find_python_interpreter() or "python3"
+				return find_python_interpreter() or "python"
 			end,
 			console = "integratedTerminal",
 		},
@@ -126,7 +107,7 @@ M.setup_handler = function(dap)
 			module = "pytest",
 			args = { "-v" },
 			pythonPath = function()
-				return find_python_interpreter() or "python3"
+				return find_python_interpreter() or "python"
 			end,
 			console = "integratedTerminal",
 		},

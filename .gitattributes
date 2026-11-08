@@ -1,0 +1,2 @@
+# One line ending everywhere, so Windows checkouts do not turn Lua files and the lock file into CRLF
+* text=auto eol=lf

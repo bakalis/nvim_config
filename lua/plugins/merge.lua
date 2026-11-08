@@ -2,6 +2,7 @@
 --   * codediff.nvim: three pane merge view (incoming | result | current), per block accept, like
 --     IntelliJ's merge dialog. Also the tool behind `git mergetool`
 --   * resolve.nvim: highlighting, jumping and choosing sides directly in files with conflict markers
+local platform = require("core.platform")
 local merge_root -- repository of the file being resolved, set by the keys below
 
 -- Pick a branch (fuzzy, local and remote) in a popup and run `:CodeDiff HEAD <branch>`
@@ -54,9 +55,9 @@ local function side_names(root)
 		return nil
 	end
 	for _, dir in ipairs({ "rebase-merge", "rebase-apply" }) do
-		if vim.fn.isdirectory(git_dir .. "/" .. dir) == 1 then
-			local onto = read_first_line(git_dir .. "/" .. dir .. "/onto")
-			local head = read_first_line(git_dir .. "/" .. dir .. "/head-name")
+		if vim.fn.isdirectory(platform.join(git_dir, dir)) == 1 then
+			local onto = read_first_line(platform.join(git_dir, dir, "onto"))
+			local head = read_first_line(platform.join(git_dir, dir, "head-name"))
 			return {
 				ours = (onto and ref_name(root, onto) or "?") .. " (rebase onto)",
 				theirs = (head and head:gsub("^refs/heads/", "") or "?") .. " (your commits)",
@@ -65,15 +66,15 @@ local function side_names(root)
 	end
 	local current = git(root, "branch", "--show-current")
 	local ours = current ~= "" and current or git(root, "rev-parse", "--short", "HEAD")
-	if vim.uv.fs_stat(git_dir .. "/MERGE_HEAD") then
-		local message = read_first_line(git_dir .. "/MERGE_MSG") or ""
+	if vim.uv.fs_stat(platform.join(git_dir, "MERGE_HEAD")) then
+		local message = read_first_line(platform.join(git_dir, "MERGE_MSG")) or ""
 		local theirs = message:match("^Merge remote%-tracking branch '([^']+)'")
 			or message:match("^Merge branch '([^']+)'")
 			or message:match("^Merge tag '([^']+)'")
 			or ref_name(root, "MERGE_HEAD")
 		return { ours = ours, theirs = theirs }
 	end
-	if vim.uv.fs_stat(git_dir .. "/CHERRY_PICK_HEAD") then
+	if vim.uv.fs_stat(platform.join(git_dir, "CHERRY_PICK_HEAD")) then
 		local picked = git(root, "log", "-1", "--format=%h %s", "CHERRY_PICK_HEAD")
 		return { ours = ours, theirs = "cherry-pick " .. (picked or "") }
 	end
@@ -347,11 +348,11 @@ return {
 					if #files == 0 then
 						vim.notify("No merge conflicts", vim.log.levels.INFO)
 					elseif #files == 1 then
-						vim.cmd("CodeDiff merge " .. vim.fn.fnameescape(root .. "/" .. files[1]))
+						vim.cmd("CodeDiff merge " .. vim.fn.fnameescape(platform.join(root, files[1])))
 					else
 						vim.ui.select(files, { prompt = "Files with merge conflicts" }, function(file)
 							if file then
-								vim.cmd("CodeDiff merge " .. vim.fn.fnameescape(root .. "/" .. file))
+								vim.cmd("CodeDiff merge " .. vim.fn.fnameescape(platform.join(root, file)))
 							end
 						end)
 					end
