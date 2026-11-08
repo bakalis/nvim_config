@@ -1,68 +1,18 @@
+local platform = require("core.platform")
+
 local M = {}
-
-local mason_packages = vim.fn.stdpath("data") .. "/mason/packages"
-
--- Every JDK on this machine as { major = 17, path = "..." }, newest first.
--- Homebrew's JDKs are keg-only, so java_home doesn't list them.
-local jdks
-local function installed_jdks()
-	if jdks then
-		return jdks
-	end
-	jdks = {}
-	local result = vim.system({ "/usr/libexec/java_home", "-V" }, { text = true }):wait()
-	for line in vim.gsplit(result.stderr or "", "\n") do
-		local version, path = line:match("^%s*([%d%._]+).*%s(/.+/Contents/Home)$")
-		if version then
-			local first, second = version:match("^(%d+)%.?(%d*)")
-			local major = tonumber(first) == 1 and tonumber(second) or tonumber(first)
-			table.insert(jdks, { major = major, path = path })
-		end
-	end
-	for _, path in ipairs(vim.fn.glob("/opt/homebrew/opt/openjdk*/libexec/openjdk.jdk/Contents/Home", true, true)) do
-		local release = vim.fn.filereadable(path .. "/release") == 1 and vim.fn.readfile(path .. "/release") or {}
-		for _, line in ipairs(release) do
-			local major = line:match('^JAVA_VERSION="(%d+)')
-			if major then
-				table.insert(jdks, { major = tonumber(major), path = path })
-			end
-		end
-	end
-	table.sort(jdks, function(a, b)
-		return a.major > b.major
-	end)
-	return jdks
-end
 
 -- jdtls itself needs Java 25+, projects can target any registered runtime
 local function runner_jdk()
-	local newest = installed_jdks()[1]
-	return newest and newest.major >= 25 and newest or nil
+	return platform.runner_jdk(25)
 end
 
 local function runtimes()
-	local seen, result = {}, {}
-	for _, jdk in ipairs(installed_jdks()) do
-		if not seen[jdk.major] then
-			seen[jdk.major] = true
-			local name = jdk.major == 8 and "JavaSE-1.8" or ("JavaSE-" .. jdk.major)
-			table.insert(result, { name = name, path = jdk.path })
-		end
-	end
-	return result
+	return platform.java_runtimes()
 end
 
--- Homebrew's mvn runs on Homebrew's own JDK unless JAVA_HOME is set, so point it at
--- the same JDK as `java` on the PATH. An exported JAVA_HOME wins.
-function M.ensure_java_home()
-	if vim.env.JAVA_HOME then
-		return
-	end
-	local result = vim.system({ "/usr/libexec/java_home" }, { text = true }):wait()
-	if result.code == 0 then
-		vim.env.JAVA_HOME = vim.trim(result.stdout)
-	end
-end
+-- Maven (and anything else started from here) should use the JDK of the `java` on the PATH
+M.ensure_java_home = platform.ensure_java_home
 
 -- Multi-module projects need a single root, so a module's own pom.xml must not count
 local function find_root(file)
@@ -88,9 +38,9 @@ local formatter_names = {
 local function formatter_settings(root)
 	local candidates = {}
 	for _, name in ipairs(formatter_names) do
-		table.insert(candidates, root .. "/" .. name)
+		table.insert(candidates, platform.join(root, name))
 	end
-	table.insert(candidates, vim.fn.stdpath("config") .. "/java/eclipse-formatter.xml")
+	table.insert(candidates, platform.config("java", "eclipse-formatter.xml"))
 
 	for _, path in ipairs(candidates) do
 		if vim.fn.filereadable(path) == 1 then
@@ -107,7 +57,7 @@ local function formatter_settings(root)
 end
 
 local function bundles()
-	local result = vim.fn.glob(mason_packages .. "/java-debug-adapter/extension/server/com.microsoft.java.debug.plugin-*.jar", true, true)
+	local result = vim.fn.glob(platform.mason_package("java-debug-adapter", "extension", "server", "com.microsoft.java.debug.plugin-*.jar"), true, true)
 	-- jdtls extensions the Spring Boot language server needs (bean and dependency hints)
 	local ok, spring = pcall(function()
 		return require("spring_boot").java_extensions()
@@ -116,7 +66,7 @@ local function bundles()
 		vim.list_extend(result, spring)
 	end
 	local excluded = { "com.microsoft.java.test.runner-jar-with-dependencies.jar", "jacocoagent.jar" }
-	for _, jar in ipairs(vim.fn.glob(mason_packages .. "/java-test/extension/server/*.jar", true, true)) do
+	for _, jar in ipairs(vim.fn.glob(platform.mason_package("java-test", "extension", "server", "*.jar"), true, true)) do
 		if not vim.list_contains(excluded, vim.fn.fnamemodify(jar, ":t")) then
 			table.insert(result, jar)
 		end
@@ -128,7 +78,7 @@ end
 -- (type "java", request "launch": mainClass, projectName, args, vmArgs, env, cwd),
 -- discovered main classes are added to the list automatically.
 local function launch_json(root)
-	return root .. "/.vscode/launch.json"
+	return platform.join(root, ".vscode", "launch.json")
 end
 
 local function launch_configs(root)
@@ -341,10 +291,10 @@ function M.neotest_binaries()
 	local Path = require("neotest-java.model.path")
 	return {
 		java = function(cwd)
-			return Path(java_home(cwd)):append("bin/java")
+			return Path(platform.java_executable(java_home(cwd)))
 		end,
 		javap = function(cwd)
-			return Path(java_home(cwd)):append("bin/javap")
+			return Path(platform.javap_executable(java_home(cwd)))
 		end,
 	}
 end
@@ -361,7 +311,7 @@ local function add_root_launch_provider()
 		end
 		local root = find_root(vim.api.nvim_buf_get_name(bufnr))
 		-- nvim-dap already reads <cwd>/.vscode/launch.json itself
-		if root == vim.fn.getcwd() then
+		if platform.same_path(root, vim.fn.getcwd()) then
 			return {}
 		end
 		return launch_configs(root)
@@ -407,7 +357,7 @@ function M.attach()
 		vim.notify("jdtls needs JDK 25 or newer, try `brew install openjdk`", vim.log.levels.ERROR)
 		return
 	end
-	if vim.fn.executable("jdtls") == 0 then
+	if not platform.has("jdtls") then
 		vim.notify("jdtls is not installed yet, see :Mason", vim.log.levels.WARN)
 		return
 	end
@@ -416,12 +366,7 @@ function M.attach()
 	add_root_launch_provider()
 
 	local root = find_root(file)
-	local workspace = string.format(
-		"%s/jdtls-workspaces/%s-%s",
-		vim.fn.stdpath("data"),
-		vim.fn.fnamemodify(root, ":t"),
-		vim.fn.sha256(root):sub(1, 8)
-	)
+	local workspace = platform.jdtls_workspace(root)
 
 	local jdtls = require("jdtls")
 	local extended_capabilities = vim.deepcopy(jdtls.extendedClientCapabilities)
@@ -431,9 +376,9 @@ function M.attach()
 
 	jdtls.start_or_attach({
 		cmd = {
-			"jdtls",
-			"--java-executable=" .. jdk.path .. "/bin/java",
-			"--jvm-arg=-javaagent:" .. mason_packages .. "/jdtls/lombok.jar",
+			platform.command("jdtls"),
+			"--java-executable=" .. platform.java_executable(jdk.path),
+			"--jvm-arg=-javaagent:" .. platform.mason_package("jdtls", "lombok.jar"),
 			"--jvm-arg=-Xmx2G",
 			"-data",
 			workspace,
