@@ -3,7 +3,7 @@
 local M = {}
 
 local namespace = vim.api.nvim_create_namespace("java-services")
-local state = { buf = nil, win = nil, root = nil, items = {}, line_item = {} }
+local state = { buf = nil, win = nil, root = nil, items = {}, line_item = {}, outputs = {} }
 
 local function java()
 	return require("lang.java")
@@ -41,6 +41,9 @@ local function render()
 	end
 	for index, item in ipairs(state.items) do
 		local session = sessions[item.name]
+		if session and session.term_buf then
+			state.outputs[item.name] = session.term_buf -- its output stays viewable after it stops
+		end
 		local text = (session and " ● " or " ○ ") .. item.name
 		if session then
 			text = text .. "  " .. (session.config.noDebug and "running" or "debugging")
@@ -56,8 +59,8 @@ local function render()
 	vim.list_extend(lines, {
 		"",
 		" <CR> run / open output   d debug",
-		" r restart   s stop   S stop all",
-		" a activate debug session",
+		" o show / hide output   r restart",
+		" s stop   S stop all   a activate",
 		" e edit configs   R refresh   q close",
 	})
 	for row = #lines - 4, #lines - 1 do
@@ -124,21 +127,52 @@ local function restart(item, debug)
 	end)
 end
 
-local function open_output(session)
-	local buf = session.term_buf
-	if not (buf and vim.api.nvim_buf_is_valid(buf)) then
-		vim.notify("No output for " .. session.config.name, vim.log.levels.INFO)
-		return
-	end
+--- The output (terminal) buffer of a service: while it runs, and its last output after it stopped
+local function output_buffer(item)
+	local session = running_sessions()[item.name]
+	local buf = session and session.term_buf or state.outputs[item.name]
+	return buf and vim.api.nvim_buf_is_valid(buf) and buf or nil
+end
+
+--- Open the output window of a service, or jump to it when it is already open, at the newest line
+local function show_output(buf)
 	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
 		if vim.api.nvim_win_get_buf(win) == buf then
 			vim.api.nvim_set_current_win(win)
+			vim.cmd("normal! G")
 			return
 		end
 	end
 	vim.cmd("botright 15split")
 	vim.api.nvim_win_set_buf(0, buf)
 	vim.cmd("normal! G")
+end
+
+--- Close the output window. The service keeps running and its log is kept, show it again with the same key.
+local function hide_output(buf)
+	vim.bo[buf].bufhidden = "hide"
+	local closed = false
+	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+		if vim.api.nvim_win_get_buf(win) == buf and #vim.api.nvim_tabpage_list_wins(0) > 1 then
+			closed = pcall(vim.api.nvim_win_close, win, false) or closed
+		end
+	end
+	return closed
+end
+
+local function toggle_output(item)
+	local buf = output_buffer(item)
+	if not buf then
+		vim.notify("No output for " .. item.name .. " yet, start it first")
+		return
+	end
+	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+		if vim.api.nvim_win_get_buf(win) == buf then
+			hide_output(buf)
+			return
+		end
+	end
+	show_output(buf)
 end
 
 local function set_keymaps(buf)
@@ -151,13 +185,21 @@ local function set_keymaps(buf)
 		if not item then
 			return
 		end
-		local session = running_sessions()[item.name]
-		if session then
-			open_output(session)
+		local buf = running_sessions()[item.name] and output_buffer(item)
+		if buf then
+			show_output(buf)
+		elseif running_sessions()[item.name] then
+			vim.notify("No output for " .. item.name .. " yet")
 		else
 			start(item, false)
 		end
 	end, "Run / open output")
+	map("o", function()
+		local item = current_item()
+		if item then
+			toggle_output(item)
+		end
+	end, "Show / hide output")
 	map("d", function()
 		local item = current_item()
 		if item then
