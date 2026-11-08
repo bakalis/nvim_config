@@ -4,7 +4,26 @@ return {
 		"mfussenegger/nvim-jdtls",
 		lazy = true,
 		dependencies = { "mfussenegger/nvim-dap" },
+		init = function()
+			-- JAVA_HOME follows the project of the current buffer / working directory
+			require("lang.jdk").setup()
+			require("lang.spring").setup()
+		end,
 		keys = {
+			{
+				"<leader>Jj",
+				function()
+					require("lang.jdk").select()
+				end,
+				desc = "Java: Select JDK",
+			},
+			{
+				"<leader>JS",
+				function()
+					require("lang.spring").select()
+				end,
+				desc = "Java: Spring profiles",
+			},
 			{
 				"<leader>Jp",
 				function()
@@ -32,9 +51,10 @@ return {
 		cmd = { "Maven", "MavenInit", "MavenExec", "MavenFavorites" },
 		dependencies = { "MunifTanjim/nui.nvim" },
 		config = function()
-			require("lang.java").ensure_java_home()
+			require("lang.jdk").apply()
 			require("maven").setup({
 				mvn_executable = require("core.platform").maven_executable(),
+				default_arguments_view = { arguments = require("lang.maven").default_arguments() },
 				projects_view = {
 					custom_commands = {
 						{
@@ -45,12 +65,55 @@ return {
 					},
 				},
 			})
+			require("lang.maven").setup()
 		end,
 		keys = {
-			{ "<leader>Mm", "<cmd>Maven<cr>", desc = "Maven: Projects" },
-			{ "<leader>Mx", "<cmd>MavenExec<cr>", desc = "Maven: Execute Goals" },
-			{ "<leader>Mf", "<cmd>MavenFavorites<cr>", desc = "Maven: Favorites" },
-			{ "<leader>Mi", "<cmd>MavenInit<cr>", desc = "Maven: New Project" },
+			{
+				"<leader>Ms",
+				function()
+					require("lang.maven").toggle("tests")
+				end,
+				desc = "Maven: Toggle skip tests (-DskipTests)",
+			},
+			{
+				"<leader>MS",
+				function()
+					require("lang.maven").toggle("compile")
+				end,
+				desc = "Maven: Toggle skip test compilation (-Dmaven.test.skip)",
+			},
+			{
+				"<leader>Mm",
+				function()
+					require("lang.jdk").apply()
+					vim.cmd("Maven")
+				end,
+				desc = "Maven: Projects",
+			},
+			{
+				"<leader>Mx",
+				function()
+					require("lang.jdk").apply()
+					vim.cmd("MavenExec")
+				end,
+				desc = "Maven: Execute Goals",
+			},
+			{
+				"<leader>Mf",
+				function()
+					require("lang.jdk").apply()
+					vim.cmd("MavenFavorites")
+				end,
+				desc = "Maven: Favorites",
+			},
+			{
+				"<leader>Mi",
+				function()
+					require("lang.jdk").apply()
+					vim.cmd("MavenInit")
+				end,
+				desc = "Maven: New Project",
+			},
 		},
 	},
 }
