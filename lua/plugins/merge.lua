@@ -4,6 +4,28 @@
 --   * resolve.nvim: highlighting, jumping and choosing sides directly in files with conflict markers
 local merge_root -- repository of the file being resolved, set by the keys below
 
+-- Pick a branch (fuzzy, local and remote) in a popup and run `:CodeDiff HEAD <branch>`
+local function diff_with_branch()
+	local actions = require("telescope.actions")
+	local action_state = require("telescope.actions.state")
+	local root = vim.fs.root(0, ".git") or vim.fn.getcwd()
+	require("telescope.builtin").git_branches({
+		cwd = root,
+		show_remote_tracking_branches = true,
+		prompt_title = "CodeDiff HEAD against…",
+		attach_mappings = function(prompt_bufnr)
+			actions.select_default:replace(function()
+				local selection = action_state.get_selected_entry()
+				actions.close(prompt_bufnr)
+				if selection then
+					vim.cmd("CodeDiff HEAD " .. selection.value)
+				end
+			end)
+			return true
+		end,
+	})
+end
+
 local function git(root, ...)
 	local result = vim.system(vim.list_extend({ "git", "-C", root }, { ... }), { text = true }):wait()
 	return result.code == 0 and vim.trim(result.stdout or "") or nil
@@ -20,7 +42,8 @@ local function read_first_line(path)
 end
 
 local function ref_name(root, rev)
-	local name = git(root, "name-rev", "--name-only", "--no-undefined", "--refs=refs/heads/*", "--refs=refs/remotes/*", rev)
+	local name =
+		git(root, "name-rev", "--name-only", "--no-undefined", "--refs=refs/heads/*", "--refs=refs/remotes/*", rev)
 	return name and name:gsub("^remotes/", ""):gsub("[~^]%d*$", "") or git(root, "rev-parse", "--short", rev) or rev
 end
 
@@ -75,7 +98,12 @@ local function resolve_in_result(tabpage, choice)
 	local block
 	for _, candidate in ipairs(session.conflict_blocks) do
 		local mark = candidate.extmark_id
-			and vim.api.nvim_buf_get_extmark_by_id(session.result_bufnr, tracking.tracking_ns, candidate.extmark_id, { details = true })
+			and vim.api.nvim_buf_get_extmark_by_id(
+				session.result_bufnr,
+				tracking.tracking_ns,
+				candidate.extmark_id,
+				{ details = true }
+			)
 		if mark and #mark > 0 then
 			local first = mark[1] + 1
 			local last = mark[3] and mark[3].end_row and (mark[3].end_row + 1) or first
@@ -90,8 +118,16 @@ local function resolve_in_result(tabpage, choice)
 		return
 	end
 
-	local ours = tracking.get_lines_for_range(session.original_bufnr, block.output1_range.start_line, block.output1_range.end_line)
-	local theirs = tracking.get_lines_for_range(session.modified_bufnr, block.output2_range.start_line, block.output2_range.end_line)
+	local ours = tracking.get_lines_for_range(
+		session.original_bufnr,
+		block.output1_range.start_line,
+		block.output1_range.end_line
+	)
+	local theirs = tracking.get_lines_for_range(
+		session.modified_bufnr,
+		block.output2_range.start_line,
+		block.output2_range.end_line
+	)
 	local lines
 	if choice == "ours" then
 		lines = ours
@@ -108,7 +144,12 @@ local function resolve_in_result(tabpage, choice)
 		end
 	end
 
-	require("codediff.ui.conflict.resolution.replace").apply_to_result(session.result_bufnr, block, lines, session.result_base_lines)
+	require("codediff.ui.conflict.resolution.replace").apply_to_result(
+		session.result_bufnr,
+		block,
+		lines,
+		session.result_base_lines
+	)
 	require("codediff.ui.conflict.gutter").refresh(session)
 	require("codediff.ui.refresh").refresh_result_now(session.result_bufnr)
 end
@@ -147,7 +188,8 @@ local function merge_apply()
 		end
 	end
 	if unresolved > 0 then
-		local choice = vim.fn.confirm(unresolved .. " conflict(s) not resolved yet. Save the result anyway?", "&Yes\n&No", 2)
+		local choice =
+			vim.fn.confirm(unresolved .. " conflict(s) not resolved yet. Save the result anyway?", "&Yes\n&No", 2)
 		if choice ~= 1 then
 			return
 		end
@@ -194,7 +236,12 @@ local function attach_result_keys(tabpage, tries)
 	-- finish keys on all three panes
 	for _, pane in ipairs({ session.original_bufnr, session.modified_bufnr, buf }) do
 		if pane and vim.api.nvim_buf_is_valid(pane) then
-			vim.keymap.set("n", "<leader>ma", merge_apply, { buffer = pane, silent = true, desc = "Merge: apply (save, stage, close)" })
+			vim.keymap.set(
+				"n",
+				"<leader>ma",
+				merge_apply,
+				{ buffer = pane, silent = true, desc = "Merge: apply (save, stage, close)" }
+			)
 			vim.keymap.set("n", "<leader>mc", merge_close, { buffer = pane, silent = true, desc = "Merge: close view" })
 		end
 	end
@@ -258,8 +305,16 @@ return {
 		cmd = "CodeDiff",
 		config = function(_, opts)
 			require("codediff").setup(opts)
-			vim.api.nvim_create_user_command("MergeApply", merge_apply, { desc = "Save the merge result, git add it and close the merge view" })
-			vim.api.nvim_create_user_command("MergeClose", merge_close, { desc = "Close the merge view without quitting Neovim" })
+			vim.api.nvim_create_user_command(
+				"MergeApply",
+				merge_apply,
+				{ desc = "Save the merge result, git add it and close the merge view" }
+			)
+			vim.api.nvim_create_user_command(
+				"MergeClose",
+				merge_close,
+				{ desc = "Close the merge view without quitting Neovim" }
+			)
 			vim.api.nvim_create_autocmd("User", {
 				group = vim.api.nvim_create_augroup("codediff-branch-titles", { clear = true }),
 				pattern = "CodeDiffOpen",
@@ -283,7 +338,11 @@ return {
 				function()
 					local root = vim.fs.root(0, ".git") or vim.fn.getcwd()
 					merge_root = root
-					local result = vim.system({ "git", "diff", "--name-only", "--diff-filter=U" }, { cwd = root, text = true }):wait()
+					local result = vim.system(
+						{ "git", "diff", "--name-only", "--diff-filter=U" },
+						{ cwd = root, text = true }
+					)
+						:wait()
 					local files = vim.split(vim.trim(result.stdout or ""), "\n", { trimempty = true })
 					if #files == 0 then
 						vim.notify("No merge conflicts", vim.log.levels.INFO)
@@ -302,6 +361,7 @@ return {
 			-- Changes view (working tree, like IntelliJ's commit window); the same key closes it again
 			{ "<leader>gv", "<cmd>CodeDiff<cr>", desc = "Diff: Changed Files" },
 			{ "<leader>gh", "<cmd>CodeDiff history %<cr>", desc = "Diff: History of Current File" },
+			{ "<leader>gB", diff_with_branch, desc = "Diff: HEAD against a Branch (popup)" },
 			{ "<leader>gH", "<cmd>CodeDiff history<cr>", desc = "Diff: Repository History" },
 			{
 				"<leader>gM",
