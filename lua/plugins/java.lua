@@ -33,9 +33,8 @@ return {
 		dependencies = { "MunifTanjim/nui.nvim" },
 		config = function()
 			require("lang.java").ensure_java_home()
-			local mvnw = vim.fn.getcwd() .. "/mvnw"
 			require("maven").setup({
-				mvn_executable = vim.fn.executable(mvnw) == 1 and mvnw or "mvn",
+				mvn_executable = require("core.platform").maven_executable(),
 				projects_view = {
 					custom_commands = {
 						{
