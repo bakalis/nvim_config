@@ -42,11 +42,12 @@ return {
 			vim.keymap.set("n", "<leader>ta", function()
 				-- neotest-java can't run a multi-module parent as one suite, so run each
 				-- module that has tests instead ("<name> does not exist" from jdtls)
+				local platform = require("core.platform")
 				local root = vim.fs.root(0, { "mvnw", "gradlew", ".git" }) or vim.fn.getcwd()
 				local modules = {}
 				for _, build_file in ipairs(vim.fs.find({ "pom.xml", "build.gradle", "build.gradle.kts" }, { path = root, limit = 50 })) do
 					local dir = vim.fs.dirname(build_file)
-					if dir ~= root and vim.fn.isdirectory(dir .. "/src/test") == 1 then
+					if not platform.same_path(dir, root) and vim.fn.isdirectory(platform.join(dir, "src", "test")) == 1 then
 						modules[dir] = true
 					end
 				end

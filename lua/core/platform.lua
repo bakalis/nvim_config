@@ -267,4 +267,183 @@ function M.use_lazygit_config()
 	end
 end
 
+---------------------------------------------------------------------------
+-- Java (used by the Java setup only)
+---------------------------------------------------------------------------
+
+--- Full path to a program, so .cmd/.bat shims (mvn.cmd, jdtls.cmd, ...) also start on Windows
+function M.command(name)
+	local path = vim.fn.exepath(name)
+	return path ~= "" and path or name
+end
+
+function M.java_executable(home)
+	return M.join(home, "bin", M.exe_name("java"))
+end
+
+function M.javap_executable(home)
+	return M.join(home, "bin", M.exe_name("javap"))
+end
+
+--- Major version of a JDK: "1.8.0_442" is 8, "17.0.13" is 17. Read from its `release` file, JDK 8 builds
+--- often have none, so those are asked with `java -version`.
+local function jdk_major(home)
+	local function major_of(version)
+		return tonumber(version:match("^1%.(%d+)") or version:match("^(%d+)"))
+	end
+	local release = M.join(home, "release")
+	if vim.fn.filereadable(release) == 1 then
+		for _, line in ipairs(vim.fn.readfile(release)) do
+			local version = line:match('^JAVA_VERSION="([^"]+)"')
+			if version then
+				return major_of(version)
+			end
+		end
+	end
+	local java = M.java_executable(home)
+	if M.has(java) then
+		local version = M.system({ java, "-version" }).stderr:match('version "([^"]+)"')
+		return version and major_of(version) or nil
+	end
+end
+
+local function glob_into(patterns, list)
+	for _, pattern in ipairs(patterns) do
+		vim.list_extend(list, vim.fn.glob(pattern, true, true))
+	end
+end
+
+--- Folders that may be a JDK home, per system. Version managers use the same layout everywhere.
+local function jdk_home_candidates()
+	local homes = {}
+	local home = M.home()
+
+	-- JAVA_HOME, JAVA_HOME_17_X64 and friends
+	for name, value in pairs(vim.fn.environ()) do
+		if name:upper():match("^JAVA_HOME") and value ~= "" then
+			table.insert(homes, value)
+		end
+	end
+
+	if M.is_macos then
+		-- /usr/libexec/java_home knows the system and per-user JDKs, Homebrew's are keg-only
+		for line in vim.gsplit(M.system({ "/usr/libexec/java_home", "-V" }).stderr, "\n") do
+			local path = line:match("%s(/.+/Contents/Home)$")
+			if path then
+				table.insert(homes, path)
+			end
+		end
+		for _, prefix in ipairs(M.homebrew_prefixes()) do
+			glob_into({ M.join(prefix, "opt", "openjdk*", "libexec", "openjdk.jdk", "Contents", "Home") }, homes)
+		end
+		glob_into({
+			M.join(home, "Library", "Java", "JavaVirtualMachines", "*", "Contents", "Home"),
+			"/Library/Java/JavaVirtualMachines/*/Contents/Home",
+		}, homes)
+	elseif M.is_linux then
+		glob_into({ "/usr/lib/jvm/*", "/usr/lib64/jvm/*", "/usr/java/*", "/opt/java/*", "/opt/jdk*" }, homes)
+	else
+		for _, variable in ipairs({ "ProgramFiles", "ProgramW6432", "ProgramFiles(x86)" }) do
+			local base = vim.env[variable]
+			if base and base ~= "" then
+				for _, vendor in ipairs({ "Java", "Eclipse Adoptium", "Eclipse Foundation", "Microsoft", "Amazon Corretto", "Zulu", "BellSoft", "Semeru", "OpenJDK" }) do
+					glob_into({ M.join(base, vendor, "*") }, homes)
+				end
+			end
+		end
+		glob_into({ M.join(vim.env.SCOOP or M.join(home, "scoop"), "apps", "*jdk*", "current") }, homes)
+	end
+
+	glob_into({
+		M.join(vim.env.SDKMAN_DIR or M.join(home, ".sdkman"), "candidates", "java", "*"),
+		M.join(home, ".jdks", "*"), -- JDKs downloaded by IntelliJ
+		M.join(home, ".asdf", "installs", "java", "*"),
+		M.join(home, ".local", "share", "mise", "installs", "java", "*"),
+	}, homes)
+
+	return homes
+end
+
+local jdk_cache
+
+--- Every JDK on this machine as { major = 17, path = "..." }, newest first
+function M.jdks()
+	if jdk_cache then
+		return jdk_cache
+	end
+	local seen, result = {}, {}
+	for _, home in ipairs(jdk_home_candidates()) do
+		local real = vim.uv.fs_realpath(home) or home
+		local major = not seen[real] and M.has(M.java_executable(home)) and jdk_major(home) or nil
+		if major then
+			seen[real] = true
+			table.insert(result, { major = major, path = home })
+		end
+	end
+	table.sort(result, function(a, b)
+		if a.major ~= b.major then
+			return a.major > b.major
+		end
+		return a.path < b.path
+	end)
+	jdk_cache = result
+	return result
+end
+
+--- The newest JDK that is at least `minimum`, or nil
+function M.runner_jdk(minimum)
+	local newest = M.jdks()[1]
+	return newest and newest.major >= minimum and newest or nil
+end
+
+--- JDKs in the form the Java language server wants: { name = "JavaSE-17", path = "..." }
+function M.java_runtimes()
+	local seen, result = {}, {}
+	for _, jdk in ipairs(M.jdks()) do
+		if not seen[jdk.major] then
+			seen[jdk.major] = true
+			table.insert(result, { name = jdk.major == 8 and "JavaSE-1.8" or ("JavaSE-" .. jdk.major), path = jdk.path })
+		end
+	end
+	return result
+end
+
+--- Make sure JAVA_HOME is set for this Neovim, so Maven and friends use the JDK of the `java` on the
+--- PATH and not their own (Homebrew's mvn would run on Homebrew's JDK). An exported JAVA_HOME wins.
+function M.ensure_java_home()
+	if vim.env.JAVA_HOME and vim.env.JAVA_HOME ~= "" then
+		return
+	end
+	local home
+	if M.is_macos then
+		local result = M.system({ "/usr/libexec/java_home" })
+		home = result.code == 0 and vim.trim(result.stdout) or nil
+	end
+	if not home then
+		-- <home>/bin/java, resolving symlinks such as /usr/bin/java -> /usr/lib/jvm/<jdk>/bin/java
+		local java = vim.fn.exepath("java")
+		if java ~= "" then
+			home = vim.fs.dirname(vim.fs.dirname(vim.uv.fs_realpath(java) or java))
+		end
+	end
+	if not (home and jdk_major(home)) and M.jdks()[1] then
+		home = M.jdks()[1].path
+	end
+	if home and jdk_major(home) then
+		vim.env.JAVA_HOME = home
+	end
+end
+
+--- Maven: the project's wrapper (mvnw, or mvnw.cmd on Windows), else mvn from the PATH
+function M.maven_executable(root)
+	local wrapper = M.join(root or vim.fn.getcwd(), M.is_windows and "mvnw.cmd" or "mvnw")
+	return M.has(wrapper) and wrapper or M.command("mvn")
+end
+
+--- Data folder of the Java language server for one project. Short names, Windows has a path length limit.
+function M.jdtls_workspace(root)
+	local name = vim.fn.fnamemodify(root, ":t"):gsub("[^%w._-]", "_"):sub(1, 24)
+	return M.data("jdtls-workspaces", name .. "-" .. vim.fn.sha256(M.normalize(root)):sub(1, 8))
+end
+
 return M
