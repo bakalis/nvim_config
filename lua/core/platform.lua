@@ -158,6 +158,17 @@ end
 -- Tools that are installed but not on the PATH
 ---------------------------------------------------------------------------
 
+--- Homebrew prefixes on this machine: whatever `brew --prefix` says, then the Apple silicon and Intel defaults
+function M.homebrew_prefixes()
+	local prefixes = {}
+	local brew = M.has("brew") and vim.trim(M.system({ "brew", "--prefix" }).stdout) or ""
+	if brew ~= "" then
+		table.insert(prefixes, brew)
+	end
+	vim.list_extend(prefixes, { "/opt/homebrew", "/usr/local" })
+	return prefixes
+end
+
 --- Make `psql` and `mysql` findable: Homebrew keeps them out of the PATH (keg-only), Debian and
 --- Red Hat put them in versioned folders, the Windows installers in Program Files.
 function M.ensure_database_clients()
@@ -167,13 +178,7 @@ function M.ensure_database_clients()
 
 	local directories = {}
 	if M.is_macos then
-		local prefixes = {}
-		local brew = M.has("brew") and vim.trim(M.system({ "brew", "--prefix" }).stdout) or ""
-		if brew ~= "" then
-			table.insert(prefixes, brew)
-		end
-		vim.list_extend(prefixes, { "/opt/homebrew", "/usr/local" }) -- Apple silicon, Intel
-		for _, prefix in ipairs(prefixes) do
+		for _, prefix in ipairs(M.homebrew_prefixes()) do
 			for _, formula in ipairs({ "libpq", "mysql-client" }) do
 				table.insert(directories, M.join(prefix, "opt", formula, "bin"))
 			end
