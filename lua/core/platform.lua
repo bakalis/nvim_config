@@ -285,26 +285,67 @@ function M.javap_executable(home)
 	return M.join(home, "bin", M.exe_name("javap"))
 end
 
---- Major version of a JDK: "1.8.0_442" is 8, "17.0.13" is 17. Read from its `release` file, JDK 8 builds
---- often have none, so those are asked with `java -version`.
-local function jdk_major(home)
+--- What a JDK says about itself: { major = 17, version = "17.0.13", vendor = "Corretto" }.
+--- Read from its `release` file; JDK 8 builds often have none, so those are asked with `java -version`.
+local function jdk_info(home)
 	local function major_of(version)
 		return tonumber(version:match("^1%.(%d+)") or version:match("^(%d+)"))
 	end
 	local release = M.join(home, "release")
 	if vim.fn.filereadable(release) == 1 then
+		local info = {}
 		for _, line in ipairs(vim.fn.readfile(release)) do
-			local version = line:match('^JAVA_VERSION="([^"]+)"')
-			if version then
-				return major_of(version)
+			local key, value = line:match('^([%w_]+)="(.*)"$')
+			if key == "JAVA_VERSION" then
+				info.version = value
+			elseif key == "IMPLEMENTOR_VERSION" then
+				info.vendor = value:match("^([%a][%w ]-)%-%d") or value:match("^(%a[%a ]*)")
+			elseif key == "IMPLEMENTOR" and not info.vendor then
+				info.vendor = value
 			end
+		end
+		if info.version then
+			info.major = major_of(info.version)
+			return info
 		end
 	end
 	local java = M.java_executable(home)
 	if M.has(java) then
-		local version = M.system({ java, "-version" }).stderr:match('version "([^"]+)"')
-		return version and major_of(version) or nil
+		local output = M.system({ java, "-version" }).stderr
+		local version = output:match('version "([^"]+)"')
+		if version then
+			return { major = major_of(version), version = version, vendor = output:match("Runtime Environment (%a+)") }
+		end
 	end
+end
+
+local function jdk_major(home)
+	local info = jdk_info(home)
+	return info and info.major
+end
+
+--- Persistent choices (project -> JDK, extra JDK folders) in one JSON file in the data directory,
+--- kept out of the projects themselves like IntelliJ's .idea is
+local function store_file()
+	return M.data("java-projects.json")
+end
+
+local function read_store()
+	local store = {}
+	if vim.fn.filereadable(store_file()) == 1 then
+		local ok, decoded = pcall(vim.json.decode, table.concat(vim.fn.readfile(store_file()), "\n"))
+		if ok and type(decoded) == "table" then
+			store = decoded
+		end
+	end
+	store.projects = type(store.projects) == "table" and store.projects or {}
+	store.custom_jdks = type(store.custom_jdks) == "table" and store.custom_jdks or {}
+	return store
+end
+
+local function write_store(store)
+	vim.fn.mkdir(vim.fs.dirname(store_file()), "p")
+	vim.fn.writefile({ vim.json.encode(store) }, store_file())
 end
 
 local function glob_into(patterns, list)
@@ -354,6 +395,8 @@ local function jdk_home_candidates()
 		glob_into({ M.join(vim.env.SCOOP or M.join(home, "scoop"), "apps", "*jdk*", "current") }, homes)
 	end
 
+	vim.list_extend(homes, read_store().custom_jdks)
+
 	glob_into({
 		M.join(vim.env.SDKMAN_DIR or M.join(home, ".sdkman"), "candidates", "java", "*"),
 		M.join(home, ".jdks", "*"), -- JDKs downloaded by IntelliJ
@@ -374,10 +417,10 @@ function M.jdks()
 	local seen, result = {}, {}
 	for _, home in ipairs(jdk_home_candidates()) do
 		local real = vim.uv.fs_realpath(home) or home
-		local major = not seen[real] and M.has(M.java_executable(home)) and jdk_major(home) or nil
-		if major then
+		local info = not seen[real] and M.has(M.java_executable(home)) and jdk_info(home) or nil
+		if info and info.major then
 			seen[real] = true
-			table.insert(result, { major = major, path = home })
+			table.insert(result, { major = info.major, version = info.version, vendor = info.vendor, path = home })
 		end
 	end
 	table.sort(result, function(a, b)
@@ -396,14 +439,27 @@ function M.runner_jdk(minimum)
 	return newest and newest.major >= minimum and newest or nil
 end
 
---- JDKs in the form the Java language server wants: { name = "JavaSE-17", path = "..." }
-function M.java_runtimes()
-	local seen, result = {}, {}
-	for _, jdk in ipairs(M.jdks()) do
-		if not seen[jdk.major] then
-			seen[jdk.major] = true
-			table.insert(result, { name = jdk.major == 8 and "JavaSE-1.8" or ("JavaSE-" .. jdk.major), path = jdk.path })
+--- JDKs in the form the Java language server wants: { name = "JavaSE-17", path = "..." }, one per
+--- major version. For the major of `preferred` (the project's JDK) that JDK is the one listed, and it
+--- is marked as the default runtime.
+function M.java_runtimes(preferred)
+	local result, index = {}, {}
+	local function add(jdk, is_preferred)
+		local entry = { name = jdk.major == 8 and "JavaSE-1.8" or ("JavaSE-" .. jdk.major), path = jdk.path }
+		if is_preferred then
+			entry.default = true
 		end
+		if index[jdk.major] then
+			if is_preferred then
+				result[index[jdk.major]] = entry
+			end
+		else
+			table.insert(result, entry)
+			index[jdk.major] = #result
+		end
+	end
+	for _, jdk in ipairs(M.jdks()) do
+		add(jdk, preferred ~= nil and M.same_path(jdk.path, preferred))
 	end
 	return result
 end
@@ -432,6 +488,128 @@ function M.ensure_java_home()
 	if home and jdk_major(home) then
 		vim.env.JAVA_HOME = home
 	end
+end
+
+--- Java version a project asks for, read from its files, or nil:
+--- { major = 17, source = ".sdkmanrc" }. Order: .sdkmanrc, .tool-versions, .java-version, then pom.xml.
+function M.declared_java(root)
+	local function major_of(text)
+		local version = text and text:match("%d[%d%.]*")
+		return version and tonumber(version:match("^1%.(%d+)") or version:match("^(%d+)")) or nil
+	end
+	local function lines_of(name)
+		local file = M.join(root, name)
+		return vim.fn.filereadable(file) == 1 and vim.fn.readfile(file) or {}
+	end
+
+	for _, line in ipairs(lines_of(".sdkmanrc")) do
+		local major = major_of(line:match("^%s*java%s*=%s*(%S+)"))
+		if major then
+			return { major = major, source = ".sdkmanrc" }
+		end
+	end
+	for _, line in ipairs(lines_of(".tool-versions")) do
+		local major = major_of(line:match("^%s*java%s+(%S+)"))
+		if major then
+			return { major = major, source = ".tool-versions" }
+		end
+	end
+	local jenv = lines_of(".java-version")[1]
+	if major_of(jenv) then
+		return { major = major_of(jenv), source = ".java-version" }
+	end
+
+	local pom = table.concat(lines_of("pom.xml"), "\n")
+	for _, tag in ipairs({ "maven.compiler.release", "java.version", "release", "maven.compiler.source", "maven.compiler.target" }) do
+		local value = pom:match("<" .. tag:gsub("%.", "%%.") .. ">%s*([^<%s]+)%s*</")
+		if value and not value:find("${", 1, true) and major_of(value) then
+			return { major = major_of(value), source = "pom.xml (" .. tag .. ")" }
+		end
+	end
+end
+
+--- One remembered setting of a project (the JDK, the Spring profiles, ...), or nil
+function M.project_option(root, name)
+	local entry = read_store().projects[M.normalize(root)]
+	return entry and entry[name]
+end
+
+--- Remember a setting of a project, nil forgets it
+function M.set_project_option(root, name, value)
+	local store = read_store()
+	local key = M.normalize(root)
+	local entry = store.projects[key] or {}
+	entry[name] = value
+	store.projects[key] = next(entry) ~= nil and entry or nil
+	write_store(store)
+end
+
+--- The JDK a project should use, and why: your explicit choice, else the version its files declare
+--- (the closest installed one, an exact match first), else nil and the machine default applies.
+function M.project_jdk(root)
+	local chosen = M.project_option(root, "jdk")
+	if chosen then
+		for _, jdk in ipairs(M.jdks()) do
+			if M.same_path(jdk.path, chosen) then
+				return jdk, "chosen"
+			end
+		end
+	end
+	local declared = M.declared_java(root)
+	if declared then
+		local jdks = M.jdks() -- newest first
+		for _, jdk in ipairs(jdks) do
+			if jdk.major == declared.major then
+				return jdk, declared.source
+			end
+		end
+		for index = #jdks, 1, -1 do
+			if jdks[index].major > declared.major then
+				return jdks[index], declared.source .. ", but no JDK " .. declared.major .. " is installed"
+			end
+		end
+	end
+end
+
+--- Remember your JDK for a project, or forget it with nil to follow the project's own files again
+function M.set_project_jdk(root, path)
+	M.set_project_option(root, "jdk", path)
+end
+
+--- Register a JDK folder that is not found automatically. Returns the JDK, or nil and the reason.
+function M.add_custom_jdk(path)
+	path = M.strip_trailing_separator(M.normalize(path))
+	if not M.has(M.java_executable(path)) then
+		return nil, "no bin/" .. M.exe_name("java") .. " in " .. path
+	end
+	if not jdk_major(path) then
+		return nil, "could not read the Java version of " .. path
+	end
+	local store = read_store()
+	if not vim.tbl_contains(store.custom_jdks, path) then
+		table.insert(store.custom_jdks, path)
+		write_store(store)
+	end
+	jdk_cache = nil
+	for _, jdk in ipairs(M.jdks()) do
+		if M.same_path(jdk.path, path) then
+			return jdk
+		end
+	end
+end
+
+local exported_java_home = vim.env.JAVA_HOME -- what the shell exported, before anything below changed it
+
+--- Point JAVA_HOME (for Maven and every command started from here) at the JDK of this project. Without
+--- a project JDK it falls back to the exported JAVA_HOME, then to the machine default.
+function M.use_project_jdk(root)
+	local jdk, source = M.project_jdk(root)
+	if jdk then
+		vim.env.JAVA_HOME = jdk.path
+		return jdk, source
+	end
+	vim.env.JAVA_HOME = exported_java_home
+	M.ensure_java_home()
 end
 
 --- Maven: the project's wrapper (mvnw, or mvnw.cmd on Windows), else mvn from the PATH
