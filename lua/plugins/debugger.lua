@@ -100,6 +100,28 @@ return {
 			return buf, win
 		end
 
+		-- Follow the output of a running program like `tail -f`. A terminal window only scrolls with new
+		-- output while its cursor is on the last line, and the cursor of a new terminal starts on the first.
+		-- Press G in the window to follow again after scrolling up.
+		vim.api.nvim_create_autocmd("TermOpen", {
+			group = vim.api.nvim_create_augroup("dap-terminal-follow", { clear = true }),
+			callback = function(event)
+				if not vim.b[event.buf]["dap-type"] then
+					return
+				end
+				-- closing the window must only hide the output, not stop the program (services panel: o)
+				vim.bo[event.buf].bufhidden = "hide"
+				vim.schedule(function()
+					if not vim.api.nvim_buf_is_valid(event.buf) then
+						return
+					end
+					for _, win in ipairs(vim.fn.win_findbuf(event.buf)) do
+						pcall(vim.api.nvim_win_set_cursor, win, { vim.api.nvim_buf_line_count(event.buf), 0 })
+					end
+				end)
+			end,
+		})
+
 		require("nvim-dap-virtual-text").setup({ commented = true })
 
 		-- nvim-dap reuses the terminal buffer of a finished session, and on Neovim 0.12 that
