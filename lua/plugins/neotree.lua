@@ -314,6 +314,8 @@ return {
 
 		vim.cmd([[nnoremap \ :Neotree reveal<cr>]])
 		vim.keymap.set("n", "<leader>e", ":Neotree toggle position=left<CR>", { noremap = true, silent = true }) -- focus file explorer
+		-- Show the current file in the tree and move the cursor to it (IntelliJ's "Select in Project View")
+		vim.keymap.set("n", "<leader>E", "<cmd>Neotree filesystem reveal left<CR>", { noremap = true, silent = true, desc = "Reveal current file in the tree" })
 		vim.keymap.set("n", "<leader>ngs", ":Neotree float git_status<CR>", { noremap = true, silent = true }) -- open git status window
 	end,
 }
