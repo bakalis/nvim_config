@@ -62,11 +62,29 @@ function M.apply(root)
 	return jdk, source
 end
 
+--- Restart jdtls with the same configuration. nvim-jdtls' own restart() still calls the deprecated
+--- vim.lsp.start_client(), so this uses vim.lsp.start().
+function M.restart_server()
+	for _, client in ipairs(vim.lsp.get_clients({ name = "jdtls" })) do
+		local buffers = vim.tbl_keys(client.attached_buffers)
+		local config = client.config
+		client:stop()
+		vim.wait(30000, function()
+			return vim.lsp.get_client_by_id(client.id) == nil
+		end)
+		for _, buffer in ipairs(buffers) do
+			if vim.api.nvim_buf_is_valid(buffer) then
+				vim.lsp.start(config, { bufnr = buffer })
+			end
+		end
+	end
+end
+
 local function restart_language_server(root)
 	for _, client in ipairs(vim.lsp.get_clients({ name = "jdtls" })) do
 		if client.root_dir and platform.same_path(client.root_dir, root) then
 			if vim.fn.confirm("Restart the Java language server to use the new JDK?", "&Yes\n&No", 1) == 1 then
-				require("jdtls.setup").restart()
+				M.restart_server()
 			end
 			return
 		end
@@ -141,6 +159,31 @@ function M.select(root)
 end
 
 --- Follow the project: set JAVA_HOME when you enter a Java buffer or change directory
+--- Run/Debug: start the application on the project's JDK. Without this jdtls picks the runtime that
+--- matches the project's compiler level (a Java 17 project runs on 17 even when 27 was chosen).
+function M.setup_dap()
+	local dap = require("dap")
+	local platform = require("core.platform")
+	dap.listeners.on_config["project-jdk"] = function(config)
+		if config.type ~= "java" or config.request ~= "launch" or not config.mainClass or config.javaExec then
+			return config
+		end
+		local cwd = config.cwd
+		local root
+		if type(cwd) == "string" and cwd ~= "" and not cwd:find("${", 1, true) and vim.fn.isdirectory(cwd) == 1 then
+			root = require("lang.java").find_root(platform.join(cwd, "."))
+		else
+			root = current_root()
+		end
+		local jdk = root and platform.project_jdk(root)
+		if jdk then
+			config = vim.deepcopy(config)
+			config.javaExec = platform.java_executable(jdk.path)
+		end
+		return config
+	end
+end
+
 function M.setup()
 	local group = vim.api.nvim_create_augroup("project-jdk", { clear = true })
 	vim.api.nvim_create_autocmd({ "BufEnter", "DirChanged" }, {
