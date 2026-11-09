@@ -244,7 +244,7 @@ local function restart_if_debug_missing()
 	if client and not restarted_for_bundles and not vim.list_contains(commands, "vscode.java.startDebugSession") then
 		restarted_for_bundles = true
 		vim.notify("jdtls: debug support not loaded on first launch, restarting")
-		require("jdtls.setup").restart()
+		require("lang.jdk").restart_server()
 	end
 end
 
@@ -363,6 +363,7 @@ function M.attach()
 	end
 	add_attach_config()
 	add_root_launch_provider()
+	require("lang.jdk").setup_dap() -- Run/Debug use the project's JDK
 	require("lang.spring").setup_dap() -- Run/Debug get the chosen Spring profiles
 
 	local root = find_root(file)
