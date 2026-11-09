@@ -44,7 +44,9 @@ return {
 
 				local client = vim.lsp.get_client_by_id(event.data.client_id)
 				if client and client:supports_method("textDocument/inlayHint") then
-					vim.lsp.inlay_hint.enable(true, { bufnr = event.buf })
+					-- jdtls is left off: its hints go stale while the buffer is formatted or the server restarts, and
+					-- Neovim then fails with "Invalid 'col': out of range". <leader>th turns them on when wanted.
+					vim.lsp.inlay_hint.enable(client.name ~= "jdtls", { bufnr = event.buf })
 					map("<leader>th", function()
 						vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled({ bufnr = event.buf }), { bufnr = event.buf })
 					end, "Toggle Inlay Hints")
