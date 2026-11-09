@@ -42,6 +42,7 @@ require("lazy").setup({
 	require("plugins.harpoon"),
 	require("plugins.paredit"),
 	require("plugins.markdown"),
+	require("plugins.autotag"),
 })
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
