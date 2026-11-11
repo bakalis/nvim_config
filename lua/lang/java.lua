@@ -324,6 +324,8 @@ M.project_configs = project_configs
 M.edit_configs = edit_configs
 
 local attach_config_added = false
+local last_remote = { host = "127.0.0.1", port = 5005 }
+
 local function add_attach_config()
 	if attach_config_added then
 		return
@@ -340,6 +342,26 @@ local function add_attach_config()
 		hostName = "127.0.0.1",
 		port = function()
 			return tonumber(vim.fn.input("Debug port: ", "5005"))
+		end,
+	})
+	-- A JVM on another machine, or behind a tunnel or container: asks for host and port. The last answer is the default.
+	table.insert(dap.configurations.java, {
+		type = "java",
+		request = "attach",
+		name = "Attach to remote JVM",
+		hostName = function()
+			local host = vim.trim(vim.fn.input("Remote host: ", last_remote.host))
+			if host ~= "" then
+				last_remote.host = host
+			end
+			return last_remote.host
+		end,
+		port = function()
+			local port = tonumber(vim.fn.input("Remote debug port: ", tostring(last_remote.port)))
+			if port then
+				last_remote.port = port
+			end
+			return last_remote.port
 		end,
 	})
 end
