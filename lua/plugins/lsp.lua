@@ -139,12 +139,12 @@ return {
 				"shfmt",
 				"checkmake",
 				"ruff",
-				"ormolu",
 				"jdtls",
 				"java-debug-adapter",
 				"java-test",
 				"vscode-spring-boot-tools",
 				"lemminx",
+				"ormolu",
 			},
 		})
 
