@@ -108,6 +108,9 @@ vim.keymap.set("n", "<Right>", ":vertical resize +2<CR>", opts)
 
 -- Buffers
 vim.keymap.set("n", "<Tab>", ":bnext<CR>", opts)
+-- Keeps Ctrl-I as the jumplist's "forward" (Ctrl-O is "back"). Without this line Neovim falls back to the <Tab>
+-- mapping above. It needs a terminal that reports Ctrl-I apart from Tab (iTerm2: "Report keys using CSI u").
+vim.keymap.set("n", "<C-i>", "<C-i>", { noremap = true, silent = true, desc = "Jump forward" })
 vim.keymap.set("n", "<S-Tab>", ":bprevious<CR>", opts)
 vim.keymap.set("n", "<leader>x", ":bdelete!<CR>", opts) -- close buffer
 vim.keymap.set("n", "<leader>b", "<cmd> enew <CR>", opts) -- new buffer
