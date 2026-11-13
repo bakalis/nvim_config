@@ -222,19 +222,53 @@ vim.keymap.set("n", "K", function()
 	end
 end, { desc = "Open help for word under cursor in horizontal split (safe)" })
 
-vim.keymap.set("n", "<leader>j", function()
+-- Moves the current line by [count] lines (4<leader>j: four lines down) and re-indents it. A line that would pass
+-- the first or last line stops at the edge, and on the edge itself nothing happens.
+local function move_line(direction)
 	local count = vim.v.count1
-	vim.cmd(string.format("m .+%d", count))
+	local line = vim.fn.line(".")
+	local total = vim.api.nvim_buf_line_count(0)
+	if (direction > 0 and line >= total) or (direction < 0 and line <= 1) then
+		return
+	end
+	-- `:move` puts the line below the given line number: 0 is the top of the file
+	local target = direction > 0 and math.min(line + count, total) or math.max(line - 1 - count, 0)
+	vim.cmd(string.format("%dmove %d", line, target))
 	vim.cmd("normal! ==")
+end
+
+vim.keymap.set("n", "<leader>j", function()
+	move_line(1)
 end, { desc = "Move line down" })
 
 vim.keymap.set("n", "<leader>k", function()
-	local count = vim.v.count1
-	vim.cmd(string.format("m .-%d", count + 1))
-	vim.cmd("normal! ==")
+	move_line(-1)
 end, { desc = "Move line up" })
 
-vim.keymap.set("v", "<leader>j", ":m'>+<CR>gv=gv", { desc = "Move down" })
-vim.keymap.set("v", "<leader>k", ":m-2<CR>gv=gv", { desc = "Move up" })
+-- Moves the selected lines by [count] lines (4<leader>j moves the block four lines down), keeps the selection
+-- and re-indents it for its new place. A block that would pass the first or last line stops at the edge.
+local function move_selection(direction)
+	local count = vim.v.count1
+	local first, last = vim.fn.line("v"), vim.fn.line(".")
+	if first > last then
+		first, last = last, first
+	end
+	local total = vim.api.nvim_buf_line_count(0)
+	if (direction > 0 and last >= total) or (direction < 0 and first <= 1) then
+		return
+	end
+	-- `:move` puts the lines below the given line number: 0 is the top of the file
+	local target = direction > 0 and math.min(last + count, total) or math.max(first - 1 - count, 0)
+	vim.cmd("normal! \27") -- leave visual mode so the '< and '> marks are set
+	vim.cmd(string.format("%d,%dmove %d", first, last, target))
+	vim.cmd("normal! gv=gv")
+end
+
+vim.keymap.set("x", "<leader>j", function()
+	move_selection(1)
+end, { desc = "Move selection down" })
+vim.keymap.set("x", "<leader>k", function()
+	move_selection(-1)
+end, { desc = "Move selection up" })
 
 vim.keymap.set("n", "<Esc>", "<cmd>nohlsearch<CR>")
