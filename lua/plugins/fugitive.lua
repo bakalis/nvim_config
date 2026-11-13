@@ -53,8 +53,18 @@ return {
 
 		map("n", "<leader>gb", ":Git blame<CR>", opts)
 
-		-- Browse on GitHub (requires vim-rhubarb)
-		map("n", "<leader>go", ":GBrowse<CR>", opts)
+		-- :GBrowse opens its URL through a :Browse command when one exists. Without it fugitive calls netrw's
+		-- BrowseX with two arguments, which the netrw of Neovim 0.12 rejects (E118). vim.ui.open uses the system
+		-- opener of each OS (open, xdg-open, start).
+		vim.api.nvim_create_user_command("Browse", function(command)
+			local _, err = vim.ui.open(command.args)
+			if err then
+				vim.notify("Could not open " .. command.args .. ": " .. err, vim.log.levels.ERROR)
+			end
+		end, { nargs = 1, desc = "Open a URL with the system browser" })
+
+		-- Browse on GitHub (requires vim-rhubarb); a visual selection links to those lines
+		map({ "n", "x" }, "<leader>go", ":GBrowse<CR>", opts)
 
 		map("n", "<leader>gl", ":G log<CR>", vim.tbl_extend("force", opts, { desc = "Git Log" }))
 
