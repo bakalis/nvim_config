@@ -119,25 +119,6 @@ return {
 			})
 		end, { desc = "Search in Open Files" })
 
-		-- -------------------------------------------------------------------------
-		-- IntelliJ-style: Find → Replace in Path (with confirmation)
-		-- -------------------------------------------------------------------------
-		vim.keymap.set("n", "<leader>sR", function()
-			builtin.live_grep({
-				prompt_title = "Search → Replace (Quickfix)",
-				attach_mappings = function(_, map)
-					local send_and_open_qf = function(prompt_bufnr)
-						actions.send_to_qflist(prompt_bufnr)
-						actions.open_qflist(prompt_bufnr)
-					end
-
-					map("i", "<CR>", send_and_open_qf)
-					map("n", "<CR>", send_and_open_qf)
-					return true
-				end,
-			})
-		end, { desc = "[S]earch → [R]eplace (confirmable)" })
-
 		vim.keymap.set("n", "<leader>sp", function()
 			local pattern = vim.fn.input("File pattern (glob, e.g. *.py): ")
 			pattern = pattern ~= "" and pattern or "*.*"
