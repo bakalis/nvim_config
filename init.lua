@@ -42,6 +42,7 @@ require("lazy").setup({
 	require("plugins.harpoon"),
 	require("plugins.paredit"),
 	require("plugins.markdown"),
+	require("plugins.better-escape"),
 	require("plugins.autotag"),
 })
 -- The line beneath this is called `modeline`. See `:help modeline`
