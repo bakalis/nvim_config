@@ -52,7 +52,10 @@ return {
 		branch = "main",
 		dependencies = { "nvim-treesitter/nvim-treesitter" },
 		config = function()
-			require("nvim-treesitter-textobjects").setup({ select = { lookahead = true } })
+			require("nvim-treesitter-textobjects").setup({
+				select = { lookahead = true },
+				move = { set_jumps = true }, -- the jumps are added to the jumplist, <C-o> goes back
+			})
 			local select = require("nvim-treesitter-textobjects.select").select_textobject
 			for key, query in pairs({
 				af = "@function.outer",
@@ -65,6 +68,19 @@ return {
 				vim.keymap.set({ "x", "o" }, key, function()
 					select(query, "textobjects")
 				end, { desc = "TS textobject " .. query })
+			end
+
+			-- Moving between functions: ]f / [f to the start of the next / previous one, ]F / [F to their ends
+			local move = require("nvim-treesitter-textobjects.move")
+			for key, motion in pairs({
+				["]f"] = { move.goto_next_start, "Next function start" },
+				["[f"] = { move.goto_previous_start, "Previous function start" },
+				["]F"] = { move.goto_next_end, "Next function end" },
+				["[F"] = { move.goto_previous_end, "Previous function end" },
+			}) do
+				vim.keymap.set({ "n", "x", "o" }, key, function()
+					motion[1]("@function.outer", "textobjects")
+				end, { desc = motion[2] })
 			end
 		end,
 	},
