@@ -78,6 +78,35 @@ function M.has(command)
 	return vim.fn.executable(command) == 1
 end
 
+--- The shell the terminal toggle starts, as a command list: PowerShell on Windows (pwsh when installed),
+--- $SHELL elsewhere
+function M.shell()
+	if M.is_windows then
+		for _, name in ipairs({ "pwsh", "powershell" }) do
+			if M.has(name) then
+				return { name }
+			end
+		end
+		return { vim.env.COMSPEC or "cmd.exe" }
+	end
+	local shell = vim.env.SHELL
+	if shell and shell ~= "" and M.has(shell) then
+		return { shell }
+	end
+	return { vim.o.shell }
+end
+
+--- Whether a process name is an interactive shell (zsh, bash, fish, PowerShell, cmd, ...)
+function M.is_shell(name)
+	name = (name or ""):lower():gsub("%.exe$", ""):gsub("^%-", "") -- login shells show up as "-zsh"
+	for _, shell in ipairs({ "zsh", "bash", "sh", "fish", "dash", "ksh", "tcsh", "csh", "nu", "elvish", "pwsh", "powershell", "cmd" }) do
+		if name == shell then
+			return true
+		end
+	end
+	return false
+end
+
 --- Name of a compiled program: `app` becomes `app.exe` on Windows
 function M.exe_name(name)
 	if M.is_windows and not name:lower():match("%.exe$") then

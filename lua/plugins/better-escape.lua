@@ -12,6 +12,23 @@ return {
 		-- The plugin maps j and k in visual and select mode (for jk), replacing the "smart" j and k of
 		-- core/keymaps.lua that jump to the end of the last line and the start of the first line. These keep the
 		-- plugin's own mapping for the escape sequence and add the jump on top, as the plugin maps are expressions.
+		-- Terminal mode: j and k belong to the program in the terminal (lazygit, vim, htop, a dev server) and a quick
+		-- jk would leave terminal mode with the program still on screen. The escape only applies at a shell prompt.
+		local plugin_tj = vim.fn.maparg("j", "t", false, true).callback
+		local plugin_tk = vim.fn.maparg("k", "t", false, true).callback
+		if plugin_tj and plugin_tk then
+			local function guarded(key, plugin_callback)
+				return function()
+					if require("core.terminal").at_shell_prompt(vim.api.nvim_get_current_buf()) then
+						return plugin_callback()
+					end
+					return key
+				end
+			end
+			vim.keymap.set("t", "j", guarded("j", plugin_tj), { expr = true, silent = true })
+			vim.keymap.set("t", "k", guarded("k", plugin_tk), { expr = true, silent = true })
+		end
+
 		for _, mode in ipairs({ "v", "s" }) do
 			local plugin_j = vim.fn.maparg("j", mode, false, true).callback
 			local plugin_k = vim.fn.maparg("k", mode, false, true).callback

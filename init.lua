@@ -1,5 +1,6 @@
 require("core.options") -- Load general options
 require("core.keymaps") -- Load general keymaps
+require("core.terminal").setup() -- Floating, numbered terminals
 require("core.diff_highlights") -- IntelliJ style diff colors
 require("core.snippets") -- Custom code snippets
 
