@@ -68,15 +68,6 @@ return {
 		-- SERVER OVERRIDES
 		---------------------------------------------------------------------------
 		local servers = {
-			rust_analyzer = {
-				settings = {
-					["rust-analyzer"] = {
-						checkOnSave = true,
-						check = { command = "clippy" },
-					},
-				},
-			},
-
 			pylsp = {
 				-- Use the project venv's pylsp when it has one, otherwise mason's pylsp
 				before_init = function(_, config)
@@ -137,6 +128,7 @@ return {
 				"shfmt",
 				"checkmake",
 				"ruff",
+				"taplo",
 				"ormolu",
 			},
 		})
@@ -148,7 +140,10 @@ return {
 		end
 		vim.lsp.config("*", { capabilities = capabilities })
 
-		require("mason-lspconfig").setup({ automatic_enable = true })
+		require("mason-lspconfig").setup({
+			-- rust-analyzer is started by rustaceanvim (lua/lang/rust.lua), a second client would compete with it
+			automatic_enable = { exclude = { "rust_analyzer" } },
+		})
 
 		-- Haskell comes from ghcup (the wrapper picks the HLS matching the project's GHC), not mason
 		if require("core.platform").has("haskell-language-server-wrapper") then
