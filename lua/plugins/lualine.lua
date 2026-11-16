@@ -53,7 +53,23 @@ return {
         lualine_a = { mode },
         lualine_b = { 'branch' },
         lualine_c = { filename },
-        lualine_x = { diagnostics, diff, { 'encoding', cond = hide_in_width }, { 'filetype', cond = hide_in_width } },
+        lualine_x = {
+          diagnostics,
+          diff,
+          -- Cargo switches: release profile, features, package (lang/cargo.lua)
+          {
+            function()
+              local ok, cargo = pcall(require, 'lang.cargo')
+              return ok and cargo.statusline() or ''
+            end,
+            cond = function()
+              return vim.bo.filetype == 'rust' or vim.fn.expand('%:t') == 'Cargo.toml'
+            end,
+            color = { fg = '#e5c07b' },
+          },
+          { 'encoding', cond = hide_in_width },
+          { 'filetype', cond = hide_in_width },
+        },
         lualine_y = { 'location' },
         lualine_z = { 'progress' },
       },

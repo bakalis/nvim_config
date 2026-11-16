@@ -8,7 +8,7 @@ return {
 			"nvim-neotest/neotest-python",
 			"nvim-neotest/neotest-go",
 			"nvim-neotest/neotest-jest",
-			"rouge8/neotest-rust",
+			"mrcjkb/rustaceanvim",
 		},
 		config = function()
 			local neotest = require("neotest")
@@ -17,6 +17,7 @@ return {
 				adapters = {
 					require("neotest-python")({
 						runner = "pytest",
+						dap = { justMyCode = false },
 					}),
 
 					require("neotest-go")({}),
@@ -25,10 +26,8 @@ return {
 						jestCommand = "npm test --",
 					}),
 
-					require("neotest-rust")({
-						args = { "--no-capture" },
-						dap_adapter = "lldb",
-					}),
+					-- rust-analyzer finds the tests, cargo-nextest runs them when it is installed
+					require("rustaceanvim.neotest"),
 				},
 			})
 
@@ -39,6 +38,14 @@ return {
 			vim.keymap.set("n", "<leader>ta", function()
 				neotest.run.run({ suite = true })
 			end, { desc = "Test: All" })
+
+			vim.keymap.set("n", "<leader>tt", function()
+				neotest.run.run()
+			end, { desc = "Test: Nearest" })
+
+			vim.keymap.set("n", "<leader>td", function()
+				neotest.run.run({ strategy = "dap" })
+			end, { desc = "Test: Debug Nearest" })
 
 			vim.keymap.set("n", "<leader>tl", function()
 				neotest.run.run_last()

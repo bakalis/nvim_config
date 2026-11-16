@@ -11,6 +11,8 @@ return {
 				bash = { "shfmt" },
 				terraform = { "terraform_fmt" },
 				haskell = { "ormolu" },
+				rust = { "rustfmt" },
+				toml = { "taplo" },
 				html = { "prettier" },
 				json = { "prettier" },
 				yaml = { "prettier" },
