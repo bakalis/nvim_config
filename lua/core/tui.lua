@@ -54,6 +54,10 @@ function M.open(command, opts)
 				if vim.api.nvim_buf_is_valid(buf) then
 					vim.api.nvim_buf_delete(buf, { force = true })
 				end
+				-- The app may have changed files (revert, update, commit). Closing the float returns to the same
+				-- buffer, which fires none of the events that make Neovim look at the disk, so check explicitly:
+				-- unchanged buffers are reloaded, ones with unsaved edits get the usual warning.
+				vim.cmd("checktime")
 			end)
 		end,
 	})
