@@ -3,6 +3,7 @@
 --     IntelliJ's merge dialog. Also the tool behind `git mergetool`
 --   * resolve.nvim: highlighting, jumping and choosing sides directly in files with conflict markers
 local platform = require("core.platform")
+local vcs = require("core.vcs")
 local merge_root -- repository of the file being resolved, set by the keys below
 
 -- Pick a branch (fuzzy, local and remote) in a popup and run `:CodeDiff HEAD <branch>`
@@ -168,9 +169,13 @@ local function current_merge()
 end
 
 local function merge_close()
-	local tabpage = current_merge()
+	local tabpage, session = current_merge()
 	if tabpage then
-		require("codediff.ui.lifecycle").close(tabpage)
+		local file = session.result_bufnr and vim.api.nvim_buf_get_name(session.result_bufnr)
+		-- close returns false when you decline to discard unsaved edits, then the view and its files stay
+		if require("codediff.ui.lifecycle").close(tabpage) and file then
+			vcs.svn_discard_conflict(file) -- a Subversion conflict's throwaway git repository
+		end
 	end
 end
 
@@ -200,7 +205,9 @@ local function merge_apply()
 	vim.api.nvim_buf_call(session.result_bufnr, function()
 		vim.cmd("silent write")
 	end)
-	if unresolved == 0 then
+	-- Subversion: copy the result to the real file and `svn resolve` it, instead of `git add`
+	local svn = vcs.svn_finish_conflict(file, unresolved == 0)
+	if unresolved == 0 and not svn then
 		local root = vim.fs.root(file, ".git") or vim.fn.getcwd()
 		local result = vim.system({ "git", "-C", root, "add", "--", file }, { text = true }):wait()
 		if result.code ~= 0 then
@@ -209,7 +216,10 @@ local function merge_apply()
 	end
 	local name = vim.fn.fnamemodify(file, ":t")
 	require("codediff.ui.lifecycle").close(tabpage)
-	vim.notify(unresolved == 0 and (name .. " resolved and staged") or (name .. " saved with unresolved conflicts"))
+	vim.notify(
+		unresolved == 0 and (name .. (svn and " resolved (svn resolve)" or " resolved and staged"))
+			or (name .. " saved with unresolved conflicts")
+	)
 end
 
 local function attach_result_keys(tabpage, tries)
@@ -271,11 +281,18 @@ end
 
 -- codediff sets fixed "Ours (Current)" / "Theirs (Incoming)" titles when the view opens
 local function retitle(tabpage, tries)
-	local names = side_names(merge_root or vim.fn.getcwd())
-	if not names then
-		return
+	-- The names of the sides. A Subversion conflict is shown from a temporary git repository, core.vcs names its sides.
+	-- The merge view registers its session a moment after it opens, so this is looked up again on every attempt.
+	local function side_labels()
+		local session = require("codediff.ui.lifecycle").get_session(tabpage)
+		local result_name = session and session.result_bufnr and vim.api.nvim_buf_get_name(session.result_bufnr)
+		return (result_name and vcs.svn_conflict_names(result_name)) or side_names(merge_root or vim.fn.getcwd())
 	end
 	local function apply()
+		local names = side_labels()
+		if not names then
+			return false
+		end
 		local found = false
 		for _, win in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
 			local winbar = vim.wo[win].winbar
@@ -336,7 +353,7 @@ return {
 		keys = {
 			{
 				"<leader>gm",
-				function()
+				vcs.dispatch({ svn = vcs.svn_resolve_files }, function()
 					local root = vim.fs.root(0, ".git") or vim.fn.getcwd()
 					merge_root = root
 					local result = vim.system(
@@ -356,20 +373,64 @@ return {
 							end
 						end)
 					end
-				end,
+				end),
 				desc = "Merge: Resolve Conflicted Files",
 			},
 			-- Changes view (working tree, like IntelliJ's commit window); the same key closes it again
-			{ "<leader>gv", "<cmd>CodeDiff<cr>", desc = "Diff: Changed Files" },
-			{ "<leader>gh", "<cmd>CodeDiff history %<cr>", desc = "Diff: History of Current File" },
-			{ "<leader>gB", diff_with_branch, desc = "Diff: HEAD against a Branch (popup)" },
-			{ "<leader>gH", "<cmd>CodeDiff history<cr>", desc = "Diff: Repository History" },
+			{
+				"<leader>gv",
+				function()
+					if vcs.kind() == "svn" then
+						vcs.svn_changes()
+					elseif vcs.require_git() then
+						vim.cmd("CodeDiff")
+					end
+				end,
+				desc = "Diff: Changed Files (git: codediff, svn: picker)",
+			},
+			{
+				"<leader>gh",
+				function()
+					if vcs.kind() == "svn" then
+						vcs.svn_history("file")
+					elseif vcs.require_git() then
+						vim.cmd("CodeDiff history %")
+					end
+				end,
+				desc = "Diff: History of Current File (git: codediff, svn: revision browser)",
+			},
+			{
+				"<leader>gB",
+				function()
+					if vcs.kind() == "svn" then
+						vcs.svn_compare_branch()
+					elseif vcs.require_git() then
+						diff_with_branch()
+					end
+				end,
+				desc = "Diff: HEAD against a Branch (git: codediff, svn: file picker)",
+			},
+			{
+				"<leader>gH",
+				function()
+					if vcs.kind() == "svn" then
+						vcs.svn_history("repo")
+					elseif vcs.require_git() then
+						vim.cmd("CodeDiff history")
+					end
+				end,
+				desc = "Diff: Repository History (git: codediff, svn: revision browser)",
+			},
 			{
 				"<leader>gM",
-				function()
+				vcs.dispatch({
+					svn = function()
+						vcs.svn_open_conflict(vim.api.nvim_buf_get_name(0))
+					end,
+				}, function()
 					merge_root = vim.fs.root(0, ".git") or vim.fn.getcwd()
 					vim.cmd("CodeDiff merge %")
-				end,
+				end),
 				desc = "Merge: Resolve Current File",
 			},
 		},

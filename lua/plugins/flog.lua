@@ -1,11 +1,13 @@
 -- Interactive git graph in a buffer, builds on vim-fugitive. Opens in its own tab, gq closes it
+local vcs = require("core.vcs")
+
 return {
 	"rbong/vim-flog",
 	dependencies = { "tpope/vim-fugitive" },
 	cmd = { "Flog", "Flogsplit", "Floggit" },
 	keys = {
-		{ "<leader>gg", "<cmd>Flog<cr>", desc = "Git graph (all branches)" },
-		{ "<leader>gG", "<cmd>Flog -path=%<cr>", desc = "Git graph of the current file" },
+		{ "<leader>gg", vcs.git_only("Flog"), desc = "Git graph (all branches)" },
+		{ "<leader>gG", vcs.git_only("Flog -path=%"), desc = "Git graph of the current file" },
 	},
 	init = function()
 		-- Same key as the changes view (<leader>gv): open the commit under the cursor in codediff
