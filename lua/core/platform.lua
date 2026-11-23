@@ -78,6 +78,58 @@ function M.has(command)
 	return vim.fn.executable(command) == 1
 end
 
+--- Whether any of the commands is installed
+local function has_any(commands)
+	for _, command in ipairs(commands) do
+		if M.has(command) then
+			return true
+		end
+	end
+	return false
+end
+
+--- A C compiler on the PATH (needed by treesitter parsers, hererocks and fzf-native). On Windows `cl`
+--- only counts when Neovim runs from a Visual Studio developer prompt, since that is what puts it on the PATH
+function M.has_c_compiler()
+	return has_any({ "cc", "gcc", "clang", "cl", "zig" })
+end
+
+--- ImageMagick, needed by image.nvim
+function M.has_magick()
+	return M.has("magick")
+end
+
+--- Tools some plugins need to build or run, and what breaks without them
+local dependency_checks = {
+	{ "C compiler (gcc, clang, cl or zig)", M.has_c_compiler, "treesitter parsers and luarocks (hererocks) cannot be built" },
+	{ "make or cmake", function() return has_any({ "make", "cmake" }) end, "telescope-fzf-native is not built (slower fuzzy finding)" },
+	{ "git", function() return M.has("git") end, "plugins cannot be installed or updated" },
+	{ "ImageMagick (magick)", M.has_magick, "image.nvim is disabled (no image previews)" },
+}
+
+--- Returns the missing tools as "tool: consequence" lines
+function M.missing_dependencies()
+	local missing = {}
+	for _, check in ipairs(dependency_checks) do
+		if not check[2]() then
+			table.insert(missing, check[1] .. ": " .. check[3])
+		end
+	end
+	return missing
+end
+
+--- Add the :DepsCheck command, which reports the missing external tools on demand
+function M.setup_dependency_check()
+	vim.api.nvim_create_user_command("DepsCheck", function()
+		local missing = M.missing_dependencies()
+		if #missing > 0 then
+			vim.notify("Missing tools:\n- " .. table.concat(missing, "\n- "), vim.log.levels.WARN)
+		else
+			vim.notify("All optional tools were found", vim.log.levels.INFO)
+		end
+	end, { desc = "Check the external tools the plugins need" })
+end
+
 --- The shell the terminal toggle starts, as a command list: PowerShell on Windows (pwsh when installed),
 --- $SHELL elsewhere
 function M.shell()

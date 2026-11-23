@@ -1,3 +1,4 @@
+vim.g.have_nerd_font = true -- The terminal uses a Nerd Font, so plugins can show icons (default: nil)
 vim.wo.number = true -- Make line numbers default (default: false)
 vim.o.relativenumber = true -- Set relative numbered lines (default: false)
 vim.o.clipboard = require("core.platform").clipboard() -- Sync clipboard between OS and Neovim, if there is a provider (default: '')

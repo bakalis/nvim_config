@@ -4,6 +4,8 @@ require("core.terminal").setup() -- Floating, numbered terminals
 require("core.diff_highlights") -- IntelliJ style diff colors
 require("core.snippets") -- Custom code snippets
 
+require("core.platform").setup_dependency_check() -- Adds :DepsCheck to report missing external tools
+
 -- Set up the Lazy plugin manager
 local lazypath = require("core.platform").data("lazy", "lazy.nvim")
 if not (vim.uv or vim.loop).fs_stat(lazypath) then
@@ -46,6 +48,9 @@ require("lazy").setup({
 	require("plugins.better-escape"),
 	require("plugins.autotag"),
 	require("plugins.grug-far"),
+}, {
+	-- luarocks support bootstraps hererocks, which compiles Lua and needs a C compiler
+	rocks = { enabled = require("core.platform").has_c_compiler() },
 })
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
