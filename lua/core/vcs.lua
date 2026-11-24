@@ -96,8 +96,8 @@ local function svn_root()
 end
 
 --- Runs a shell command in a floating terminal window covering 95% of the screen (like the git diff float).
---- q closes it.
-local function float_command(command, cwd)
+--- q closes it. on_close, when given, runs after the float is gone.
+local function float_command(command, cwd, on_close)
 	local width = math.floor(vim.o.columns * 0.95)
 	local height = math.floor(vim.o.lines * 0.95)
 	local buf = vim.api.nvim_create_buf(false, true)
@@ -112,6 +112,15 @@ local function float_command(command, cwd)
 	})
 	vim.fn.jobstart(command, { term = true, cwd = cwd })
 	vim.cmd("startinsert")
+	if on_close then
+		vim.api.nvim_create_autocmd("BufWipeout", {
+			buffer = buf,
+			once = true,
+			callback = function()
+				vim.schedule(on_close)
+			end,
+		})
+	end
 	vim.keymap.set({ "t", "n" }, "q", function()
 		vim.cmd("stopinsert")
 		vim.cmd("bd!")
@@ -366,9 +375,12 @@ function M.svn_compare_branch()
 		local function diff_command(file)
 			return { "svn", "diff", "--old=" .. target.url, "--new=.", "--", file }
 		end
+		-- reopened when the diff float closes, on the file that was just viewed
+		local function open_picker(selected)
 		pickers
 			.new({}, {
 				prompt_title = "Working copy against " .. target.label,
+				default_selection_index = selected,
 				finder = finders.new_table({
 					results = files,
 					entry_maker = function(entry)
@@ -390,13 +402,17 @@ function M.svn_compare_branch()
 						actions.close(prompt_bufnr)
 						if entry then
 							local escaped = vim.tbl_map(vim.fn.shellescape, diff_command(entry.value.file))
-							float_command(table.concat(escaped, " ") .. through_delta(), wc_root)
+							float_command(table.concat(escaped, " ") .. through_delta(), wc_root, function()
+								open_picker(entry.index)
+							end)
 						end
 					end)
 					return true
 				end,
 			})
 			:find()
+		end
+		open_picker()
 	end
 
 	pickers
