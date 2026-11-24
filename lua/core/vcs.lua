@@ -52,7 +52,8 @@ function M.require_svn()
 		return true
 	end
 	vim.notify(
-		kind == "git" and "This is a git repository, not a Subversion working copy" or "Not in a Subversion working copy",
+		kind == "git" and "This is a git repository, not a Subversion working copy"
+			or "Not in a Subversion working copy",
 		vim.log.levels.WARN
 	)
 	return false
@@ -139,10 +140,7 @@ function M.svn_file_diff()
 		return
 	end
 	-- relative to the file, so the header shows only its name
-	float_command(
-		"svn diff -- " .. vim.fn.shellescape(vim.fs.basename(file)) .. through_delta(),
-		vim.fs.dirname(file)
-	)
+	float_command("svn diff -- " .. vim.fn.shellescape(vim.fs.basename(file)) .. through_delta(), vim.fs.dirname(file))
 end
 
 --- Shows `text` in a small centered float, q closes it.
@@ -189,7 +187,10 @@ function M.svn_blame()
 	local result = vim.system({ "svn", "blame", "--xml", "--", file }, { text = true }):wait()
 	if result.code ~= 0 then
 		local reason = vim.trim(result.stderr or "")
-		vim.notify("svn blame failed: " .. (reason ~= "" and reason or "is this file under version control?"), vim.log.levels.ERROR)
+		vim.notify(
+			"svn blame failed: " .. (reason ~= "" and reason or "is this file under version control?"),
+			vim.log.levels.ERROR
+		)
 		return
 	end
 
@@ -208,7 +209,8 @@ function M.svn_blame()
 			if revision then
 				local author = entry:match("<author>(.-)</author>") or "?"
 				local date = (entry:match("<date>(.-)</date>") or ""):sub(1, 10)
-				rows[line] = { revision = revision, text = string.format("%-6s %-12.12s %s", "r" .. revision, author, date) }
+				rows[line] =
+					{ revision = revision, text = string.format("%-6s %-12.12s %s", "r" .. revision, author, date) }
 				revisions[tonumber(revision)] = true
 			else
 				rows[line] = { text = "uncommitted" }
@@ -278,7 +280,8 @@ function M.svn_blame()
 			vim.notify("Not committed yet", vim.log.levels.INFO)
 			return
 		end
-		local log = vim.system({ "svn", "log", "-v", "-r", row.revision }, { cwd = vim.fs.dirname(file), text = true }):wait()
+		local log = vim.system({ "svn", "log", "-v", "-r", row.revision }, { cwd = vim.fs.dirname(file), text = true })
+			:wait()
 		float_text(log.stdout ~= "" and log.stdout or (log.stderr or ""), "svn r" .. row.revision)
 	end, { buffer = blame_buf, desc = "Show the log message of this revision" })
 	vim.api.nvim_create_autocmd("BufWipeout", {
@@ -319,7 +322,10 @@ local function svn_targets()
 		local r = vim.system({ "svn", "ls", base_url .. "/" .. folder }, { text = true }):wait()
 		local names = {}
 		for _, name in ipairs(r.code == 0 and vim.split(r.stdout, "\n", { trimempty = true }) or {}) do
-			table.insert(names, { label = folder .. "/" .. name:gsub("/$", ""), url = base_url .. "/" .. folder .. "/" .. name:gsub("/$", "") })
+			table.insert(names, {
+				label = folder .. "/" .. name:gsub("/$", ""),
+				url = base_url .. "/" .. folder .. "/" .. name:gsub("/$", ""),
+			})
 		end
 		return names
 	end
@@ -338,19 +344,11 @@ local function svn_targets()
 		return nil
 	end
 	return { targets = targets, relative = relative, wc_root = wc_root, base_url = base_url }
-
 end
 
---- Compare the working copy with a branch, tag or trunk of the repository (<leader>gB): pick the branch, then the
---- files that differ from it. <CR> shows the diff of a file in the float. The diff reads "branch -> working copy",
---- so choosing trunk shows what your branch changes.
-function M.svn_compare_branch()
-	local found = svn_targets()
-	if not found then
-		return
-	end
-	local targets, relative, wc_root = found.targets, found.relative, found.wc_root
-
+--- The files of the working copy that differ from target ({ label, url, base }), <CR> shows the diff of one in the float.
+--- target.url is what `svn diff --old` gets (a revision as url@rev), target.base the plain url the file names are relative to.
+local function svn_compare_files(wc_root, target)
 	local pickers = require("telescope.pickers")
 	local finders = require("telescope.finders")
 	local conf = require("telescope.config").values
@@ -358,25 +356,29 @@ function M.svn_compare_branch()
 	local action_state = require("telescope.actions.state")
 	local previewers = require("telescope.previewers")
 
-	local function pick_file(target)
-		local r = vim.system({ "svn", "diff", "--summarize", "--old=" .. target.url, "--new=." }, { cwd = wc_root, text = true }):wait()
-		local files = {}
-		for _, line in ipairs(r.code == 0 and vim.split(r.stdout, "\n", { trimempty = true }) or {}) do
-			local flag, url = line:match("^(%u)%s+(%S.*)$") -- property-only changes start with a blank and are skipped
-			local file = flag and url:sub(#target.url + 2)
-			if file and file ~= "" and not file:match("/$") and not vim.uv.fs_stat(wc_root .. "/" .. file .. "/.") then
-				table.insert(files, { flag = flag, file = file })
-			end
+	local r = vim.system(
+		{ "svn", "diff", "--summarize", "--old=" .. target.url, "--new=." },
+		{ cwd = wc_root, text = true }
+	)
+		:wait()
+	local files = {}
+	for _, line in ipairs(r.code == 0 and vim.split(r.stdout, "\n", { trimempty = true }) or {}) do
+		local flag, url = line:match("^(%u)%s+(%S.*)$") -- property-only changes start with a blank and are skipped
+		local file = flag and url:sub(#(target.base or target.url) + 2)
+		if file and file ~= "" and not file:match("/$") and not vim.uv.fs_stat(wc_root .. "/" .. file .. "/.") then
+			table.insert(files, { flag = flag, file = file })
 		end
-		if #files == 0 then
-			vim.notify("No file differs from " .. target.label, vim.log.levels.INFO)
-			return
-		end
-		local function diff_command(file)
-			return { "svn", "diff", "--old=" .. target.url, "--new=.", "--", file }
-		end
-		-- reopened when the diff float closes, on the file that was just viewed
-		local function open_picker(selected)
+	end
+	if #files == 0 then
+		vim.notify("No file differs from " .. target.label, vim.log.levels.INFO)
+		return
+	end
+	local function diff_command(file)
+		return { "svn", "diff", "--old=" .. target.url, "--new=.", "--", file }
+	end
+
+	-- reopened when the diff float closes, on the file that was just viewed
+	local function open_picker(selected)
 		pickers
 			.new({}, {
 				prompt_title = "Working copy against " .. target.label,
@@ -384,7 +386,11 @@ function M.svn_compare_branch()
 				finder = finders.new_table({
 					results = files,
 					entry_maker = function(entry)
-						return { value = entry, display = string.format("%-2s %s", entry.flag, entry.file), ordinal = entry.file }
+						return {
+							value = entry,
+							display = string.format("%-2s %s", entry.flag, entry.file),
+							ordinal = entry.file,
+						}
 					end,
 				}),
 				sorter = conf.generic_sorter({}),
@@ -392,7 +398,13 @@ function M.svn_compare_branch()
 					title = "svn diff",
 					define_preview = function(self, entry)
 						local diff = vim.system(diff_command(entry.value.file), { cwd = wc_root, text = true }):wait()
-						vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, vim.split(diff.stdout, "\n", { plain = true }))
+						vim.api.nvim_buf_set_lines(
+							self.state.bufnr,
+							0,
+							-1,
+							false,
+							vim.split(diff.stdout, "\n", { plain = true })
+						)
 						vim.bo[self.state.bufnr].filetype = "diff"
 					end,
 				}),
@@ -411,9 +423,25 @@ function M.svn_compare_branch()
 				end,
 			})
 			:find()
-		end
-		open_picker()
 	end
+	open_picker()
+end
+
+--- Compare the working copy with a branch, tag or trunk of the repository (<leader>gB): pick the branch, then the
+--- files that differ from it. <CR> shows the diff of a file in the float. The diff reads "branch -> working copy",
+--- so choosing trunk shows what your branch changes.
+function M.svn_compare_branch()
+	local found = svn_targets()
+	if not found then
+		return
+	end
+	local targets, relative, wc_root = found.targets, found.relative, found.wc_root
+
+	local pickers = require("telescope.pickers")
+	local finders = require("telescope.finders")
+	local conf = require("telescope.config").values
+	local actions = require("telescope.actions")
+	local action_state = require("telescope.actions.state")
 
 	pickers
 		.new({}, {
@@ -430,13 +458,133 @@ function M.svn_compare_branch()
 					local entry = action_state.get_selected_entry()
 					actions.close(prompt_bufnr)
 					if entry then
-						pick_file(entry.value)
+						svn_compare_files(wc_root, entry.value)
 					end
 				end)
 				return true
 			end,
 		})
 		:find()
+end
+
+--- The latest `limit` revisions of target (a url or a path), newest first: { revision, author, date, message }.
+--- nil after reporting an error. HEAD:1 because a folder stays at the revision of its last update, which would hide
+--- newer commits.
+local function svn_log(cwd, target, limit)
+	-- the trailing @ keeps an @ in the target from being read as a revision
+	local result = vim.system(
+		{ "svn", "log", "--xml", "-r", "HEAD:1", "-l", tostring(limit), "--", target .. "@" },
+		{ cwd = cwd, text = true }
+	):wait()
+	if result.code ~= 0 then
+		vim.notify("svn log failed: " .. vim.trim(result.stderr or ""), vim.log.levels.ERROR)
+		return nil
+	end
+	local xml, starts, revisions = result.stdout, {}, {}
+	for position in xml:gmatch("()<logentry[%s>]") do
+		table.insert(starts, position)
+	end
+	for index, position in ipairs(starts) do
+		local entry = xml:sub(position, (starts[index + 1] or #xml + 1) - 1)
+		local revision = tonumber(entry:match('revision="(%d+)"'))
+		if revision then
+			local message = vim.trim(entry:match("<msg>(.-)</msg>") or "")
+			message =
+				message:gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("&quot;", '"'):gsub("&apos;", "'"):gsub("&amp;", "&")
+			table.insert(revisions, {
+				revision = revision,
+				author = entry:match("<author>(.-)</author>") or "?",
+				date = (entry:match("<date>(.-)</date>") or ""):sub(1, 10),
+				message = message,
+			})
+		end
+	end
+	return revisions
+end
+
+--- Compare the working copy with any revision of the repository (<leader>gC): pick the revision from the log, then the
+--- files that differ from it. Same file picker and diff float as the branch compare. The list starts with the latest
+--- 300 revisions, its last entry loads 300 more.
+function M.svn_compare_revision()
+	local wc_root = svn_root()
+	local url = vim.system({ "svn", "info", "--show-item", "url" }, { cwd = wc_root, text = true }):wait()
+	if url.code ~= 0 then
+		vim.notify("svn info failed: is this a Subversion working copy?", vim.log.levels.ERROR)
+		return
+	end
+	local base = vim.trim(url.stdout)
+	local page = 300
+
+	local pickers = require("telescope.pickers")
+	local finders = require("telescope.finders")
+	local conf = require("telescope.config").values
+	local actions = require("telescope.actions")
+	local action_state = require("telescope.actions.state")
+
+	local function open(limit, selected)
+		local revisions = svn_log(wc_root, base, limit)
+		if not revisions then
+			return
+		end
+		if #revisions == 0 then
+			vim.notify("No history found", vim.log.levels.INFO)
+			return
+		end
+		local results = vim.list_extend({}, revisions)
+		if #revisions == limit then -- a full page: there may be more
+			table.insert(results, { more = true })
+		end
+		pickers
+			.new({}, {
+				prompt_title = "Compare the working copy with revision… (latest " .. #revisions .. ")",
+				sorting_strategy = "ascending",
+				layout_config = { prompt_position = "top" },
+				default_selection_index = selected,
+				finder = finders.new_table({
+					results = results,
+					entry_maker = function(revision)
+						if revision.more then
+							-- no search text: the entry shows up only when the list is not filtered
+							return {
+								value = revision,
+								display = "… load " .. page .. " older revisions",
+								ordinal = "",
+							}
+						end
+						local text = string.format(
+							"r%d  %s  %s  %s",
+							revision.revision,
+							revision.date,
+							revision.author,
+							revision.message:match("[^\n]*") or ""
+						)
+						return { value = revision, display = text, ordinal = text }
+					end,
+				}),
+				sorter = conf.generic_sorter({}),
+				attach_mappings = function(prompt_bufnr)
+					actions.select_default:replace(function()
+						local entry = action_state.get_selected_entry()
+						actions.close(prompt_bufnr)
+						if not entry then
+							return
+						end
+						if entry.value.more then
+							open(limit + page, #revisions + 1) -- the cursor lands on the first newly loaded revision
+						else
+							local revision = entry.value.revision
+							svn_compare_files(
+								wc_root,
+								{ label = "r" .. revision, url = base .. "@" .. revision, base = base }
+							)
+						end
+					end)
+					return true
+				end,
+			})
+			:find()
+	end
+	open(page)
 end
 
 --- Splits the output of `svn diff` into one block per file: { file, text, action = "A" | "D" | "M" }.
@@ -484,36 +632,7 @@ function M.svn_history(scope)
 		cwd = svn_root()
 		target = "."
 	end
-	-- HEAD:1 because a folder stays at the revision of its last update, which would hide newer commits
-	local result = vim.system({ "svn", "log", "--xml", "-r", "HEAD:1", "-l", "300", "--", target }, { cwd = cwd, text = true }):wait()
-	if result.code ~= 0 then
-		vim.notify("svn log failed: " .. vim.trim(result.stderr or ""), vim.log.levels.ERROR)
-		return
-	end
-
-	local xml = result.stdout
-	local starts, revisions = {}, {}
-	for position in xml:gmatch("()<logentry[%s>]") do
-		table.insert(starts, position)
-	end
-	for index, position in ipairs(starts) do
-		local entry = xml:sub(position, (starts[index + 1] or #xml + 1) - 1)
-		local revision = tonumber(entry:match('revision="(%d+)"'))
-		if revision then
-			local message = vim.trim(entry:match("<msg>(.-)</msg>") or "")
-			message = message:gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("&quot;", '"'):gsub("&apos;", "'"):gsub("&amp;", "&")
-			table.insert(revisions, {
-				revision = revision,
-				author = entry:match("<author>(.-)</author>") or "?",
-				date = (entry:match("<date>(.-)</date>") or ""):sub(1, 10),
-				message = message,
-			})
-		end
-	end
-	if #revisions == 0 then
-		vim.notify("No history found", vim.log.levels.INFO)
-		return
-	end
+	local page = 300
 
 	local diff_target = target
 	if scope ~= "file" then
@@ -523,7 +642,11 @@ function M.svn_history(scope)
 	local cache = {}
 	local function revision_diff(revision)
 		if not cache[revision] then
-			local r = vim.system({ "svn", "diff", "-c", tostring(revision), "--", diff_target }, { cwd = cwd, text = true }):wait()
+			local r = vim.system(
+				{ "svn", "diff", "-c", tostring(revision), "--", diff_target },
+				{ cwd = cwd, text = true }
+			)
+				:wait()
 			cache[revision] = r.code == 0 and r.stdout or ("svn diff failed: " .. vim.trim(r.stderr or ""))
 		end
 		return cache[revision]
@@ -559,14 +682,24 @@ function M.svn_history(scope)
 				finder = finders.new_table({
 					results = blocks,
 					entry_maker = function(block)
-						return { value = block, display = string.format("%-2s %s", block.action, block.file), ordinal = block.file }
+						return {
+							value = block,
+							display = string.format("%-2s %s", block.action, block.file),
+							ordinal = block.file,
+						}
 					end,
 				}),
 				sorter = conf.generic_sorter({}),
 				previewer = previewers.new_buffer_previewer({
 					title = "diff",
 					define_preview = function(self, entry)
-						vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, vim.split(entry.value.text, "\n", { plain = true }))
+						vim.api.nvim_buf_set_lines(
+							self.state.bufnr,
+							0,
+							-1,
+							false,
+							vim.split(entry.value.text, "\n", { plain = true })
+						)
 						vim.bo[self.state.bufnr].filetype = "diff"
 					end,
 				}),
@@ -588,60 +721,114 @@ function M.svn_history(scope)
 			:find()
 	end
 
-	pickers
-		.new({}, {
-			prompt_title = scope == "file" and ("History of " .. vim.fs.basename(file)) or "History of the working copy",
-			-- newest revision on top: results top to bottom, with the prompt above them
-			sorting_strategy = "ascending",
-			layout_config = { prompt_position = "top" },
-			finder = finders.new_table({
-				results = revisions,
-				entry_maker = function(revision)
-					local first_line = revision.message:match("[^\n]*") or ""
-					return {
-						value = revision,
-						display = string.format("r%-5d %-10.10s %s  %s", revision.revision, revision.author, revision.date, first_line),
-						ordinal = string.format("r%d %s %s %s", revision.revision, revision.author, revision.date, revision.message),
-					}
+	local function open(limit, selected)
+		local revisions = svn_log(cwd, target, limit)
+		if not revisions then
+			return
+		end
+		if #revisions == 0 then
+			vim.notify("No history found", vim.log.levels.INFO)
+			return
+		end
+		local results = vim.list_extend({}, revisions)
+		if #revisions == limit then -- a full page: there may be more
+			table.insert(results, { more = true })
+		end
+		pickers
+			.new({}, {
+				prompt_title = (
+					scope == "file" and ("History of " .. vim.fs.basename(file)) or "History of the working copy"
+				)
+					.. " (latest "
+					.. #revisions
+					.. ")",
+				default_selection_index = selected,
+				-- newest revision on top: results top to bottom, with the prompt above them
+				sorting_strategy = "ascending",
+				layout_config = { prompt_position = "top" },
+				finder = finders.new_table({
+					results = results,
+					entry_maker = function(revision)
+						if revision.more then
+							-- no search text: the entry shows up only when the list is not filtered
+							return {
+								value = revision,
+								display = "… load " .. page .. " older revisions",
+								ordinal = "",
+							}
+						end
+						local first_line = revision.message:match("[^\n]*") or ""
+						return {
+							value = revision,
+							display = string.format(
+								"r%-5d %-10.10s %s  %s",
+								revision.revision,
+								revision.author,
+								revision.date,
+								first_line
+							),
+							ordinal = string.format(
+								"r%d %s %s %s",
+								revision.revision,
+								revision.author,
+								revision.date,
+								revision.message
+							),
+						}
+					end,
+				}),
+				sorter = conf.generic_sorter({}),
+				previewer = previewers.new_buffer_previewer({
+					title = "message and diff",
+					define_preview = function(self, entry)
+						local revision = entry.value
+						if revision.more then
+							vim.api.nvim_buf_set_lines(
+								self.state.bufnr,
+								0,
+								-1,
+								false,
+								{ "Select this entry to load " .. page .. " older revisions" }
+							)
+							return
+						end
+						local lines =
+							{ string.format("r%d | %s | %s", revision.revision, revision.author, revision.date), "" }
+						vim.list_extend(lines, vim.split(revision.message, "\n", { plain = true }))
+						table.insert(lines, "")
+						vim.list_extend(lines, vim.split(revision_diff(revision.revision), "\n", { plain = true }))
+						vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
+						vim.bo[self.state.bufnr].filetype = "diff"
+					end,
+				}),
+				attach_mappings = function(prompt_bufnr, map)
+					actions.select_default:replace(function()
+						local entry = action_state.get_selected_entry()
+						actions.close(prompt_bufnr)
+						if not entry then
+							return
+						end
+						if entry.value.more then
+							open(limit + page, #revisions + 1) -- the cursor lands on the first newly loaded revision
+						elseif scope == "file" then
+							show_whole(entry.value)
+						else
+							pick_changed_file(entry.value)
+						end
+					end)
+					map({ "i", "n" }, "<C-d>", function()
+						local entry = action_state.get_selected_entry()
+						actions.close(prompt_bufnr)
+						if entry and not entry.value.more then
+							show_whole(entry.value)
+						end
+					end)
+					return true
 				end,
-			}),
-			sorter = conf.generic_sorter({}),
-			previewer = previewers.new_buffer_previewer({
-				title = "message and diff",
-				define_preview = function(self, entry)
-					local revision = entry.value
-					local lines = { string.format("r%d | %s | %s", revision.revision, revision.author, revision.date), "" }
-					vim.list_extend(lines, vim.split(revision.message, "\n", { plain = true }))
-					table.insert(lines, "")
-					vim.list_extend(lines, vim.split(revision_diff(revision.revision), "\n", { plain = true }))
-					vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
-					vim.bo[self.state.bufnr].filetype = "diff"
-				end,
-			}),
-			attach_mappings = function(prompt_bufnr, map)
-				actions.select_default:replace(function()
-					local entry = action_state.get_selected_entry()
-					actions.close(prompt_bufnr)
-					if not entry then
-						return
-					end
-					if scope == "file" then
-						show_whole(entry.value)
-					else
-						pick_changed_file(entry.value)
-					end
-				end)
-				map({ "i", "n" }, "<C-d>", function()
-					local entry = action_state.get_selected_entry()
-					actions.close(prompt_bufnr)
-					if entry then
-						show_whole(entry.value)
-					end
-				end)
-				return true
-			end,
-		})
-		:find()
+			})
+			:find()
+	end
+	open(page)
 end
 
 --- Switch the working copy to another branch, tag or trunk (`svn switch`, <leader>gS). Local changes come along;
@@ -660,7 +847,11 @@ function M.svn_switch()
 	local function switch_to(target)
 		local changes = vim.system({ "svn", "status", "-q" }, { cwd = found.wc_root, text = true }):wait()
 		if vim.trim(changes.stdout or "") ~= "" then
-			local choice = vim.fn.confirm("The working copy has local changes. They stay, but may conflict. Switch to " .. target.label .. "?", "&Yes\n&No", 2)
+			local choice = vim.fn.confirm(
+				"The working copy has local changes. They stay, but may conflict. Switch to " .. target.label .. "?",
+				"&Yes\n&No",
+				2
+			)
 			if choice ~= 1 then
 				return
 			end
@@ -674,7 +865,11 @@ function M.svn_switch()
 		local conflicts = select(2, result.stdout:gsub("\n%s*C%s", "\n")) + (result.stdout:match("^%s*C%s") and 1 or 0)
 		local summary = vim.trim(result.stdout):match("([^\n]*)$") -- "Updated to revision N."
 		vim.notify(
-			"Switched to " .. target.label .. (conflicts > 0 and (" with " .. conflicts .. " conflict(s), see svn status") or "") .. "\n" .. summary,
+			"Switched to "
+				.. target.label
+				.. (conflicts > 0 and (" with " .. conflicts .. " conflict(s), see svn status") or "")
+				.. "\n"
+				.. summary,
 			conflicts > 0 and vim.log.levels.WARN or vim.log.levels.INFO
 		)
 	end
@@ -755,7 +950,10 @@ function M.svn_open_conflict(file)
 	local mine = (info.stdout or ""):match("Conflict Previous Working File: ([^\n]+)")
 	local theirs = (info.stdout or ""):match("Conflict Current Base File: ([^\n]+)")
 	if not (base and mine and theirs) then
-		vim.notify(name .. " has no text conflict to resolve (a property or tree conflict needs `svn resolve`)", vim.log.levels.WARN)
+		vim.notify(
+			name .. " has no text conflict to resolve (a property or tree conflict needs `svn resolve`)",
+			vim.log.levels.WARN
+		)
 		return
 	end
 
@@ -878,12 +1076,20 @@ function M.svn_merge()
 		local local_changes = vim.system({ "svn", "status", "-q" }, { cwd = wc_root, text = true }):wait()
 		-- the folder's own property change (svn:mergeinfo of an earlier merge) shows as " M ." and is not a file change
 		if vim.trim((local_changes.stdout or ""):gsub("\n? M%s+%.\n?", "\n")) ~= "" then
-			local choice = vim.fn.confirm("The working copy has uncommitted changes, they will mix with the merge. Continue?", "&Yes\n&No", 2)
+			local choice = vim.fn.confirm(
+				"The working copy has uncommitted changes, they will mix with the merge. Continue?",
+				"&Yes\n&No",
+				2
+			)
 			if choice ~= 1 then
 				return
 			end
 		end
-		local dry = vim.system({ "svn", "merge", "--non-interactive", "--dry-run", target.url }, { cwd = wc_root, text = true }):wait()
+		local dry = vim.system(
+			{ "svn", "merge", "--non-interactive", "--dry-run", target.url },
+			{ cwd = wc_root, text = true }
+		)
+			:wait()
 		if dry.code ~= 0 then
 			vim.notify("svn merge cannot start:\n" .. vim.trim(dry.stderr or ""), vim.log.levels.ERROR)
 			return
@@ -895,13 +1101,20 @@ function M.svn_merge()
 		end
 		local summary = string.format(
 			"Merge %s into %s?\n\n%d updated, %d added, %d deleted, %d merged, %d conflict(s) expected",
-			target.label, found.relative, expected.U, expected.A, expected.D, expected.G, expected.C
+			target.label,
+			found.relative,
+			expected.U,
+			expected.A,
+			expected.D,
+			expected.G,
+			expected.C
 		)
 		if vim.fn.confirm(summary, "&Merge\n&Cancel", 2) ~= 1 then
 			return
 		end
 
-		local result = vim.system({ "svn", "merge", "--non-interactive", target.url }, { cwd = wc_root, text = true }):wait()
+		local result = vim.system({ "svn", "merge", "--non-interactive", target.url }, { cwd = wc_root, text = true })
+			:wait()
 		vim.cmd("checktime")
 		if result.code ~= 0 then
 			vim.notify("svn merge failed:\n" .. vim.trim(result.stderr or ""), vim.log.levels.ERROR)
@@ -989,7 +1202,8 @@ function M.svn_changes()
 				title = "svn diff",
 				define_preview = function(self, entry)
 					local diff = vim.system({ "svn", "diff", entry.value.file }, { cwd = root, text = true }):wait()
-					local text = diff.stdout ~= "" and diff.stdout or ("(no textual diff for " .. entry.value.file .. ")")
+					local text = diff.stdout ~= "" and diff.stdout
+						or ("(no textual diff for " .. entry.value.file .. ")")
 					vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, vim.split(text, "\n", { plain = true }))
 					vim.bo[self.state.bufnr].filetype = "diff"
 				end,

@@ -6,6 +6,27 @@ local platform = require("core.platform")
 local vcs = require("core.vcs")
 local merge_root -- repository of the file being resolved, set by the keys below
 
+-- Pick a commit from the log and run `:CodeDiff <commit>`, the working tree against that commit
+local function diff_with_commit()
+	local actions = require("telescope.actions")
+	local action_state = require("telescope.actions.state")
+	local root = vim.fs.root(0, ".git") or vim.fn.getcwd()
+	require("telescope.builtin").git_commits({
+		cwd = root,
+		prompt_title = "CodeDiff working tree against…",
+		attach_mappings = function(prompt_bufnr)
+			actions.select_default:replace(function()
+				local selection = action_state.get_selected_entry()
+				actions.close(prompt_bufnr)
+				if selection then
+					vim.cmd("CodeDiff " .. selection.value)
+				end
+			end)
+			return true
+		end,
+	})
+end
+
 -- Pick a branch (fuzzy, local and remote) in a popup and run `:CodeDiff HEAD <branch>`
 local function diff_with_branch()
 	local actions = require("telescope.actions")
@@ -409,6 +430,17 @@ return {
 					end
 				end,
 				desc = "Diff: HEAD against a Branch (git: codediff, svn: file picker)",
+			},
+			{
+				"<leader>gC",
+				function()
+					if vcs.kind() == "svn" then
+						vcs.svn_compare_revision()
+					elseif vcs.require_git() then
+						diff_with_commit()
+					end
+				end,
+				desc = "Diff: Working Copy against a Commit/Revision (git: codediff, svn: file picker)",
 			},
 			{
 				"<leader>gH",
