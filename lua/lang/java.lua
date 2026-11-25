@@ -248,6 +248,16 @@ local function restart_if_debug_missing()
 	end
 end
 
+--- Runs fn on the main loop and waits for it, for vim.fn calls from neotest's fast event context
+local function on_main(fn)
+	local future = require("nio").control.future()
+	vim.schedule(function()
+		local ok, result = pcall(fn)
+		future.set(ok and result or nil)
+	end)
+	return future.wait()
+end
+
 -- neotest-java asks jdtls for the JDK of the directory a run starts in. In a multi-module
 -- project "run all" starts in the aggregator pom, which jdtls doesn't import as a Java
 -- project ("<name> does not exist"), so ask a child module instead.
@@ -256,12 +266,30 @@ function M.neotest_binaries()
 
 	local function java_home(cwd)
 		local dir = cwd:to_string()
+		-- the JDK you chose for the project (or the one its files ask for) comes first, and is not cached so a
+		-- change with the JDK picker applies to the next run
+		-- (neotest runs this in a fast event context, where vim.fn functions are not allowed: ask the main loop)
+		local nio = require("nio")
+		local jdk_future = nio.control.future()
+		vim.schedule(function()
+			local ok, jdk = pcall(platform.project_jdk, find_root(platform.join(dir, ".")))
+			jdk_future.set(ok and jdk and jdk.path or false)
+		end)
+		local project_jdk = jdk_future.wait()
+		if project_jdk then
+			return project_jdk
+		end
 		if cache[dir] then
 			return cache[dir]
 		end
 
-		local nio = require("nio")
-		local client = vim.lsp.get_clients({ name = "jdtls" })[1]
+		local client = on_main(function()
+			for _, candidate in ipairs(vim.lsp.get_clients({ name = "jdtls" })) do
+				if candidate.initialized and not candidate:is_stopped() then
+					return candidate
+				end
+			end
+		end)
 		local dirs = { dir }
 		for _, pom in ipairs(vim.fs.find("pom.xml", { path = dir, limit = 20 })) do
 			table.insert(dirs, vim.fs.dirname(pom))
@@ -297,6 +325,151 @@ function M.neotest_binaries()
 			return Path(platform.javap_executable(java_home(cwd)))
 		end,
 	}
+end
+
+--- JUnit 6 (what neotest-java downloads) needs Java 17, so tests of older projects run on the last console launcher
+--- that still runs on Java 8.
+local legacy_junit = {
+	version = "1.10.1",
+	sha256 = "b42eaa53d13576d17db5fb8b280722a6ae9e36daf95f4262bc6e96d4cb20725f",
+}
+
+--- Path of the legacy console launcher, downloaded on first use. nil when that fails.
+local function legacy_junit_jar()
+	local nio = require("nio")
+	local jar = platform.join(on_main(function()
+		return vim.fn.stdpath("data")
+	end), "neotest-java", "junit-platform-console-standalone-" .. legacy_junit.version .. ".jar")
+	local function checksum_ok()
+		return on_main(function()
+			local file = io.open(jar, "rb")
+			if not file then
+				return false
+			end
+			local content = file:read("*a")
+			file:close()
+			return vim.fn.sha256(content) == legacy_junit.sha256
+		end)
+	end
+	if checksum_ok() then
+		return jar
+	end
+	on_main(function()
+		vim.notify("Downloading the JUnit " .. legacy_junit.version .. " console launcher for tests on JDK 16 or older")
+		vim.fn.mkdir(vim.fs.dirname(jar), "p")
+	end)
+	local url = "https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/%s/junit-platform-console-standalone-%s.jar"
+	local download = nio.wrap(function(cb)
+		vim.system({ "curl", "-fsSL", "-o", jar, url:format(legacy_junit.version, legacy_junit.version) }, {}, cb)
+	end, 1)
+	local result = download()
+	if result.code == 0 and checksum_ok() then
+		return jar
+	end
+	on_main(function()
+		os.remove(jar)
+		vim.notify("Could not download the JUnit " .. legacy_junit.version .. " console launcher: " .. (result.stderr or ""), vim.log.levels.ERROR)
+	end)
+	return nil
+end
+
+--- The Java major version of the java executable a command builder will run, nil when unknown
+local function java_major_of(java_bin)
+	local home = vim.fs.dirname(vim.fs.dirname(java_bin))
+	return on_main(function()
+		for _, jdk in ipairs(platform.jdks()) do
+			if platform.same_path(jdk.path, home) then
+				return jdk.major
+			end
+		end
+	end)
+end
+
+--- Two adjustments to every JUnit command neotest-java builds (patches its command builder once):
+---  * tests on a JDK older than 17 get the JUnit 1.10 console launcher, JUnit 6 does not start there
+---  * On Windows a command line may not be longer than about 32k characters (8k through cmd.exe), and
+---    neotest-java puts the whole classpath into it. When the command is long, the arguments after `execute`
+---    move into an argument file (`@file`), which the JUnit console launcher reads itself.
+local junit_commands_adapted = false
+function M.adapt_junit_commands(max_length)
+	if junit_commands_adapted then
+		return
+	end
+	junit_commands_adapted = true
+	max_length = max_length or 6000
+	local CommandBuilder = require("neotest-java.command.junit_command_builder")
+	local build = CommandBuilder.build_to_table
+	CommandBuilder.build_to_table = function(self)
+		if self._java_bin and self._junit_jar and self._junit_jar:to_string():match("console%-standalone%-6%.") then
+			local major = java_major_of(self._java_bin:to_string())
+			local jar = major and major < 17 and legacy_junit_jar()
+			if jar then
+				self._junit_jar = require("neotest-java.model.path")(jar)
+			end
+		end
+		local command = build(self)
+		if #command.command + #table.concat(command.args, " ") <= max_length then
+			return command
+		end
+		local split
+		for index, arg in ipairs(command.args) do
+			if arg == "execute" then
+				split = index
+				break
+			end
+		end
+		if not split then
+			return command
+		end
+		local lines = {}
+		for index = split + 1, #command.args do
+			-- forward slashes: backslashes would be read as escapes in the file (Windows accepts both)
+			local value = command.args[index]:gsub("\\", "/"):gsub('"', '\\"')
+			table.insert(lines, '"' .. value .. '"')
+		end
+		local file = vim.fn.tempname()
+		vim.fn.writefile(lines, file)
+		local args = vim.list_slice(command.args, 1, split)
+		table.insert(args, "@" .. file:gsub("\\", "/"))
+		return { command = command.command, args = args }
+	end
+end
+
+--- The jdtls client neotest-java sends its requests to. neotest-java's own provider remembers the first client it
+--- found, so after jdtls was restarted (JDK change) the next run asked a dead client and waited forever. This one looks
+--- for the running client every time, and waits while jdtls is starting up again.
+function M.neotest_client_provider()
+	local nio = require("nio")
+	local function running_client()
+		return on_main(function()
+			for _, client in ipairs(vim.lsp.get_clients({ name = "jdtls" })) do
+				if client.initialized and not client:is_stopped() then
+					return client
+				end
+			end
+		end)
+	end
+	return function(cwd)
+		local client = running_client()
+		if client then
+			return client
+		end
+		-- jdtls only starts for a Java buffer: load one of the project's files so it does
+		on_main(function()
+			local file = vim.fn.globpath(cwd:to_string(), "**/*.java", false, true)[1]
+			if file then
+				vim.fn.bufload(vim.fn.bufadd(file))
+			end
+		end)
+		for _ = 1, 120 do -- up to a minute
+			nio.sleep(500)
+			client = running_client()
+			if client then
+				return client
+			end
+		end
+		error("jdtls is not running (it may still be starting after a restart), try again in a moment")
+	end
 end
 
 local root_provider_added = false

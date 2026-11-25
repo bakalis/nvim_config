@@ -65,6 +65,15 @@ end
 --- Restart jdtls with the same configuration. nvim-jdtls' own restart() still calls the deprecated
 --- vim.lsp.start_client(), so this uses vim.lsp.start().
 function M.restart_server()
+	-- The Spring Boot server goes first: while it shuts down it still asks jdtls to remove its classpath listeners,
+	-- and with jdtls already gone that request is left unanswered (an error from the RPC layer)
+	local spring_was_enabled = vim.lsp.config["spring-boot"] ~= nil
+	if spring_was_enabled then
+		pcall(vim.lsp.enable, "spring-boot", false)
+		vim.wait(5000, function()
+			return #vim.lsp.get_clients({ name = "spring-boot" }) == 0
+		end)
+	end
 	for _, client in ipairs(vim.lsp.get_clients({ name = "jdtls" })) do
 		local buffers = vim.tbl_keys(client.attached_buffers)
 		local config = client.config
@@ -77,6 +86,10 @@ function M.restart_server()
 				vim.lsp.start(config, { bufnr = buffer })
 			end
 		end
+	end
+	-- the Spring Boot language server is started again too, it may have failed to start with the previous JDK
+	if spring_was_enabled then
+		pcall(vim.lsp.enable, "spring-boot")
 	end
 end
 

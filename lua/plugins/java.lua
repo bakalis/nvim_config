@@ -38,12 +38,19 @@ return {
 		"JavaHello/spring-boot.nvim",
 		ft = { "java", "yaml", "jproperties" },
 		dependencies = { "mfussenegger/nvim-jdtls" },
-		opts = {
-			-- Only start in projects that actually depend on Spring Boot
-			project_filter = function(root_dir)
-				return require("spring_boot.util").has_spring_boot_dependency(root_dir)
-			end,
-		},
+		opts = function()
+			local platform = require("core.platform")
+			-- The server needs Java 17 or newer. Without java_cmd it would start with $JAVA_HOME, the JDK picked for
+			-- the project, so choosing JDK 8 or 11 left it unable to start ("Spring Boot LS is not ready")
+			local runner = platform.runner_jdk(17)
+			return {
+				java_cmd = runner and platform.java_executable(runner.path) or nil,
+				-- Only start in projects that actually depend on Spring Boot
+				project_filter = function(root_dir)
+					return require("spring_boot.util").has_spring_boot_dependency(root_dir)
+				end,
+			}
+		end,
 	},
 	{
 		-- Project explorer, goals, dependency analysis, archetypes

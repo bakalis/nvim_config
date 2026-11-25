@@ -13,10 +13,17 @@ return {
 		},
 		config = function()
 			local neotest = require("neotest")
+			local client_provider = require("lang.java").neotest_client_provider()
+			require("lang.java").adapt_junit_commands() -- older JDKs and long classpaths (Windows command line limit)
 
 			neotest.setup({
 				adapters = {
-					require("neotest-java")({}, { binaries = require("lang.java").neotest_binaries() }),
+					require("neotest-java")({}, {
+						binaries = require("lang.java").neotest_binaries(),
+						client_provider = client_provider,
+						-- its own compiler also remembers the first jdtls client
+						lsp_compiler = require("neotest-java.core.spec_builder.compiler.lsp_compiler")({ client_provider = client_provider }),
+					}),
 
 					require("neotest-python")({
 						runner = "pytest",
