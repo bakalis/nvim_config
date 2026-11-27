@@ -28,6 +28,8 @@ return {
 		-- -------------------------------------------------------------------------
 		telescope.setup({
 			defaults = {
+				-- every picker opens in normal mode (j/k to move, i to type, q or <Esc> to close)
+				initial_mode = "normal",
 				mappings = {
 					i = {
 						["<C-k>"] = actions.move_selection_previous,
@@ -36,6 +38,7 @@ return {
 						["<C-q>"] = actions.send_to_qflist + actions.open_qflist,
 					},
 					n = {
+						["q"] = actions.close, -- like <Esc>, and like the diff floats
 						["<C-q>"] = actions.send_to_qflist + actions.open_qflist,
 					},
 				},
@@ -44,11 +47,11 @@ return {
 			pickers = {
 				find_files = {
 					hidden = true,
-					file_ignore_patterns = { "node_modules", "%.git", "%.venv" },
+					file_ignore_patterns = { "node_modules", "%.git", "%.venv", "%.svn/" },
 				},
 
 				live_grep = {
-					file_ignore_patterns = { "node_modules", "%.git", "%.venv" },
+					file_ignore_patterns = { "node_modules", "%.git", "%.venv", "%.svn/" },
 					additional_args = function()
 						return { "--hidden" }
 					end,
@@ -73,7 +76,12 @@ return {
 		-- Standard Telescope keymaps
 		-- -------------------------------------------------------------------------
 		vim.keymap.set("n", "<leader>sh", builtin.help_tags, { desc = "[S]earch [H]elp" })
-		vim.keymap.set("n", "<leader>sc", require("core.vcs").git_only(builtin.git_commits), { desc = "[S]earch [C]ommits" })
+		-- Subversion: the revision browser of <leader>gH (searchable by number, author, date and message)
+		local vcs = require("core.vcs")
+		local svn_commits = function()
+			vcs.svn_history("repo")
+		end
+		vim.keymap.set("n", "<leader>sc", vcs.dispatch({ svn = svn_commits }, builtin.git_commits), { desc = "[S]earch [C]ommits" })
 		vim.keymap.set("n", "<leader>sk", builtin.keymaps, { desc = "[S]earch [K]eymaps" })
 		vim.keymap.set("n", "<leader>sf", builtin.find_files, { desc = "[S]earch [F]iles" })
 		vim.keymap.set("n", "<leader>ss", builtin.builtin, { desc = "[S]earch [S]elect Telescope" })

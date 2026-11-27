@@ -132,15 +132,25 @@ local function through_delta()
 	return vim.fn.executable("delta") == 1 and " | delta" or ""
 end
 
+--- Brings back the picker a diff was opened from, as it was left: same filter text and selected entry.
+--- Used as the on_close of the diff floats that are opened from a picker.
+local function resume_picker()
+	require("telescope.builtin").resume()
+end
+
 --- The diff of the current file against BASE in a floating window, rendered by delta like the git one (<leader>gd).
-function M.svn_file_diff()
+function M.svn_file_diff(on_close)
 	local file = vim.api.nvim_buf_get_name(0)
 	if file == "" then
 		vim.notify("This buffer has no file", vim.log.levels.WARN)
 		return
 	end
 	-- relative to the file, so the header shows only its name
-	float_command("svn diff -- " .. vim.fn.shellescape(vim.fs.basename(file)) .. through_delta(), vim.fs.dirname(file))
+	float_command(
+		"svn diff -- " .. vim.fn.shellescape(vim.fs.basename(file)) .. through_delta(),
+		vim.fs.dirname(file),
+		on_close
+	)
 end
 
 --- Shows `text` in a small centered float, q closes it.
@@ -377,12 +387,10 @@ local function svn_compare_files(wc_root, target)
 		return { "svn", "diff", "--old=" .. target.url, "--new=.", "--", file }
 	end
 
-	-- reopened when the diff float closes, on the file that was just viewed
-	local function open_picker(selected)
+	local function open_picker()
 		pickers
 			.new({}, {
 				prompt_title = "Working copy against " .. target.label,
-				default_selection_index = selected,
 				finder = finders.new_table({
 					results = files,
 					entry_maker = function(entry)
@@ -414,9 +422,7 @@ local function svn_compare_files(wc_root, target)
 						actions.close(prompt_bufnr)
 						if entry then
 							local escaped = vim.tbl_map(vim.fn.shellescape, diff_command(entry.value.file))
-							float_command(table.concat(escaped, " ") .. through_delta(), wc_root, function()
-								open_picker(entry.index)
-							end)
+							float_command(table.concat(escaped, " ") .. through_delta(), wc_root, resume_picker)
 						end
 					end)
 					return true
@@ -608,10 +614,11 @@ local function split_diff(text)
 end
 
 --- Shows text in the delta float (a temporary file keeps the quoting simple).
-local function float_text_through_delta(text)
+local function float_text_through_delta(text, on_close)
 	local tmp = vim.fn.tempname()
 	vim.fn.writefile(vim.split(text, "\n", { plain = true }), tmp)
-	float_command((vim.fn.executable("delta") == 1 and "delta < " or "cat ") .. vim.fn.shellescape(tmp))
+	local viewer = vim.fn.executable("delta") == 1 and "delta < " or "cat "
+	float_command(viewer .. vim.fn.shellescape(tmp), nil, on_close)
 end
 
 --- History browser: pick a revision, see what it changed. scope "file" is the history of the current file, "repo" the
@@ -659,19 +666,25 @@ function M.svn_history(scope)
 	local action_state = require("telescope.actions.state")
 	local previewers = require("telescope.previewers")
 
+	-- nothing to show: say so and go back to the picker we came from
+	local function nothing_to_show(revision)
+		vim.notify("r" .. revision.revision .. " has no textual changes here", vim.log.levels.INFO)
+		vim.schedule(resume_picker)
+	end
+
 	local function show_whole(revision)
 		local text = revision_diff(revision.revision)
 		if vim.trim(text) == "" then
-			vim.notify("r" .. revision.revision .. " has no textual changes here", vim.log.levels.INFO)
+			nothing_to_show(revision)
 			return
 		end
-		float_text_through_delta(text)
+		float_text_through_delta(text, resume_picker)
 	end
 
 	local function pick_changed_file(revision)
 		local blocks = split_diff(revision_diff(revision.revision))
 		if #blocks == 0 then
-			vim.notify("r" .. revision.revision .. " has no textual changes here", vim.log.levels.INFO)
+			nothing_to_show(revision)
 			return
 		end
 		pickers
@@ -708,7 +721,7 @@ function M.svn_history(scope)
 						local entry = action_state.get_selected_entry()
 						actions.close(prompt_bufnr)
 						if entry then
-							float_text_through_delta(entry.value.text)
+							float_text_through_delta(entry.value.text, resume_picker)
 						end
 					end)
 					map({ "i", "n" }, "<C-d>", function()
@@ -1219,7 +1232,7 @@ function M.svn_changes()
 					vim.cmd.edit(vim.fn.fnameescape(change.path))
 					-- only modified, replaced and conflicted files have a BASE version to compare with
 					if vim.tbl_contains({ "M", "MM", "C", "R", "RM" }, change.flags) then
-						M.svn_file_diff()
+						M.svn_file_diff(resume_picker)
 					end
 				end)
 				return true
