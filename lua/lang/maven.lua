@@ -97,4 +97,52 @@ function M.setup()
 	end
 end
 
+-- ---------------------------------------------------------------------------------------------------------------------
+-- Reload: jdtls reads the build files again, so new dependencies, modules and compiler settings take effect. Works
+-- from any buffer, pom.xml included, and reloads every module (like IntelliJ's "Reload All Maven Projects").
+-- <leader>Ju in a Java file does the same but lets you pick the modules.
+-- ---------------------------------------------------------------------------------------------------------------------
+local build_files = { ["pom.xml"] = true, ["build.gradle"] = true, ["build.gradle.kts"] = true, ["settings.gradle"] = true }
+
+local function unsaved_build_file()
+	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+		local name = vim.api.nvim_buf_get_name(buf)
+		if vim.bo[buf].modified and build_files[vim.fs.basename(name)] then
+			return vim.fn.fnamemodify(name, ":~:.")
+		end
+	end
+end
+
+local function reload_with(client)
+	local buf = next(client.attached_buffers)
+	client:request("workspace/executeCommand", { command = "java.project.getAll" }, function(err, projects)
+		if err or not projects or #projects == 0 then
+			vim.notify("Could not list the projects: " .. (err and err.message or "none found"), vim.log.levels.ERROR)
+			return
+		end
+		client:notify("java/projectConfigurationsUpdate", {
+			identifiers = vim.tbl_map(function(uri)
+				return { uri = uri }
+			end, projects),
+		})
+		vim.notify("Reloading " .. #projects .. " project(s) of " .. vim.fs.basename(client.config.root_dir or ""))
+	end, buf)
+end
+
+function M.reload()
+	local unsaved = unsaved_build_file()
+	if unsaved then
+		vim.notify(unsaved .. " has unsaved changes, save it first", vim.log.levels.WARN)
+		return
+	end
+	local clients = vim.lsp.get_clients({ name = "jdtls" })
+	if #clients == 0 then
+		vim.notify("jdtls is not running: open a Java file of the project first", vim.log.levels.WARN)
+		return
+	end
+	for _, client in ipairs(clients) do
+		reload_with(client)
+	end
+end
+
 return M

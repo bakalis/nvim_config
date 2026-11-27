@@ -8,8 +8,18 @@ return {
 			-- JAVA_HOME follows the project of the current buffer / working directory
 			require("lang.jdk").setup()
 			require("lang.spring").setup()
+			vim.api.nvim_create_user_command("MavenReload", function()
+				require("lang.maven").reload()
+			end, { desc = "Reload all Maven / Gradle projects in jdtls" })
 		end,
 		keys = {
+			{
+				"<leader>Mr",
+				function()
+					require("lang.maven").reload()
+				end,
+				desc = "Maven: Reload all projects",
+			},
 			{
 				"<leader>Jj",
 				function()
