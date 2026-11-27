@@ -30,6 +30,8 @@ return {
 			defaults = {
 				-- every picker opens in normal mode (j/k to move, i to type, q or <Esc> to close)
 				initial_mode = "normal",
+				-- Subversion's internal files, in every picker (find_files and live_grep list their own patterns below)
+				file_ignore_patterns = { "%.svn/" },
 				mappings = {
 					i = {
 						["<C-k>"] = actions.move_selection_previous,

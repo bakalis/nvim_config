@@ -132,6 +132,34 @@ local function through_delta()
 	return vim.fn.executable("delta") == 1 and " | delta" or ""
 end
 
+--- Adds the keys that jump from a picker of changed files to the file itself: `o` (or <C-o>) opens it, and
+--- Telescope's usual <C-v> / <C-x> / <C-t> open it in a vertical split, a split or a tab. `path_of` turns the
+--- entry's value into the absolute path. <leader>sr brings the picker back afterwards.
+local function file_jumps(prompt_bufnr, map, path_of)
+	local actions = require("telescope.actions")
+	local action_state = require("telescope.actions.state")
+	local function open(command)
+		return function()
+			local entry = action_state.get_selected_entry()
+			if not entry then
+				return
+			end
+			local path = path_of(entry.value)
+			if not vim.uv.fs_stat(path) then -- deleted, or only in the other branch: stay in the picker
+				vim.notify(vim.fn.fnamemodify(path, ":t") .. " is not in your working copy", vim.log.levels.WARN)
+				return
+			end
+			actions.close(prompt_bufnr)
+			vim.cmd(command .. " " .. vim.fn.fnameescape(path))
+		end
+	end
+	map("n", "o", open("edit"))
+	map({ "i", "n" }, "<C-o>", open("edit"))
+	actions.select_vertical:replace(open("vsplit"))
+	actions.select_horizontal:replace(open("split"))
+	actions.select_tab:replace(open("tabedit"))
+end
+
 --- Brings back the picker a diff was opened from, as it was left: same filter text and selected entry.
 --- Used as the on_close of the diff floats that are opened from a picker.
 local function resume_picker()
@@ -416,7 +444,10 @@ local function svn_compare_files(wc_root, target)
 						vim.bo[self.state.bufnr].filetype = "diff"
 					end,
 				}),
-				attach_mappings = function(prompt_bufnr)
+				attach_mappings = function(prompt_bufnr, map)
+					file_jumps(prompt_bufnr, map, function(value)
+						return vim.fs.joinpath(wc_root, value.file)
+					end)
 					actions.select_default:replace(function()
 						local entry = action_state.get_selected_entry()
 						actions.close(prompt_bufnr)
@@ -717,6 +748,9 @@ function M.svn_history(scope)
 					end,
 				}),
 				attach_mappings = function(prompt_bufnr, map)
+					file_jumps(prompt_bufnr, map, function(block)
+						return vim.fs.joinpath(cwd, block.file) -- relative to the working copy, or the file's folder
+					end)
 					actions.select_default:replace(function()
 						local entry = action_state.get_selected_entry()
 						actions.close(prompt_bufnr)
@@ -1221,7 +1255,10 @@ function M.svn_changes()
 					vim.bo[self.state.bufnr].filetype = "diff"
 				end,
 			}),
-			attach_mappings = function(prompt_bufnr)
+			attach_mappings = function(prompt_bufnr, map)
+				file_jumps(prompt_bufnr, map, function(change)
+					return change.path
+				end)
 				actions.select_default:replace(function()
 					local entry = action_state.get_selected_entry()
 					actions.close(prompt_bufnr)
